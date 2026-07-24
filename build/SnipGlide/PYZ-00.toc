@@ -3324,6 +3324,10 @@
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\database\\note_settings_repo.py',
    'PYMODULE'),
+  ('snipglide.database.search_repo',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\database\\search_repo.py',
+   'PYMODULE'),
   ('snipglide.database.snippet_repo',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\database\\snippet_repo.py',
@@ -3379,6 +3383,10 @@
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\services\\clipboard_monitor.py',
    'PYMODULE'),
+  ('snipglide.services.maintenance',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\services\\maintenance.py',
+   'PYMODULE'),
   ('snipglide.services.security',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\services\\security.py',
@@ -3417,6 +3425,10 @@
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\ui\\dialogs\\security_dialog.py',
    'PYMODULE'),
+  ('snipglide.ui.health_page',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\ui\\health_page.py',
+   'PYMODULE'),
   ('snipglide.ui.main_window',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\ui\\main_window.py',
@@ -3428,6 +3440,10 @@
   ('snipglide.ui.notes_page',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\ui\\notes_page.py',
+   'PYMODULE'),
+  ('snipglide.ui.search_page',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\ui\\search_page.py',
    'PYMODULE'),
   ('snipglide.ui.settings_page',
    'C:\\Users\\mrbea\\Downloads\\New folder '
@@ -3458,6 +3474,10 @@
   ('snipglide.utils.logger',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\utils\\logger.py',
+   'PYMODULE'),
+  ('snipglide.utils.single_instance',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\utils\\single_instance.py',
    'PYMODULE'),
   ('socket',
    'C:\\Users\\mrbea\\AppData\\Local\\Python\\pythoncore-3.14-64\\Lib\\socket.py',
