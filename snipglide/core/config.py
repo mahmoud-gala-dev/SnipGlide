@@ -27,6 +27,7 @@ DEFAULT_SETTINGS = {
     "ai_api_key": "",
     "ai_provider": "gemini",
     "theme": "System",
+    "ui_zoom": 1.0,
     "sidebar_font_size": 13,
     "sidebar_direction": "ltr",
 }

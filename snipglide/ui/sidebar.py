@@ -1,25 +1,27 @@
 import customtkinter as ctk
 
+
 class Sidebar(ctk.CTkFrame):
     def __init__(self, parent, select_callback, **kwargs):
         super().__init__(parent, width=220, corner_radius=0, **kwargs)
         self.select_callback = select_callback
-        
+
         self.grid_propagate(False)
-        
+
         ctk.CTkLabel(self, text="SnipGlide", font=ctk.CTkFont(size=24, weight="bold")).pack(pady=(30, 2), padx=20)
         ctk.CTkLabel(self, text="Text Expander Pro", font=ctk.CTkFont(size=12), text_color="gray").pack(pady=(0, 25), padx=20)
-        
+
         self.nav_buttons = {}
         pages = [
-            ("Dashboard", "📊 Dashboard"),
-            ("Snippets", "📝 Snippets"),
-            ("Clipboard", "📋 Clipboard"),
-            ("AIAssistant", "🤖 AI Assistant"),
-            ("Settings", "⚙️ Settings"),
-            ("Marketplace", "🛍 Marketplace")
+            ("Dashboard", "Dashboard"),
+            ("Snippets", "Snippets"),
+            ("Notes", "Notes"),
+            ("Clipboard", "Clipboard"),
+            ("AIAssistant", "AI Assistant"),
+            ("Settings", "Settings"),
+            ("Marketplace", "Marketplace"),
         ]
-        
+
         for page_id, label in pages:
             btn = ctk.CTkButton(
                 self,
@@ -35,9 +37,9 @@ class Sidebar(ctk.CTkFrame):
             )
             btn.pack(fill="x", padx=(2, 15), pady=2)
             self.nav_buttons[page_id] = btn
-            
+
         self.select_page("Dashboard")
-        
+
     def select_page(self, page_id: str):
         for pid, btn in self.nav_buttons.items():
             if pid == page_id:

@@ -15,7 +15,7 @@ def initialize_database():
             CREATE TABLE IF NOT EXISTS groups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL UNIQUE,
-                icon TEXT DEFAULT '📁',
+                icon TEXT DEFAULT 'G',
                 color TEXT DEFAULT '#2563eb',
                 description TEXT DEFAULT '',
                 is_collapsed INTEGER DEFAULT 0
@@ -25,7 +25,7 @@ def initialize_database():
         # Insert default General group if it doesn't exist
         cursor.execute("SELECT id FROM groups WHERE name = 'General'")
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO groups (name, icon, color) VALUES ('General', '📁', '#2563eb')")
+            cursor.execute("INSERT INTO groups (name, icon, color) VALUES ('General', 'G', '#2563eb')")
             
         # Create snippets table
         cursor.execute("""
@@ -101,5 +101,39 @@ def initialize_database():
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_history_used ON usage_history (used_at)")
+        
+        # Create note categories table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS note_categories (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                icon TEXT DEFAULT 'N',
+                color TEXT DEFAULT '#2563eb',
+                description TEXT DEFAULT ''
+            )
+        """)
+        
+        # Insert default note category
+        cursor.execute("SELECT id FROM note_categories WHERE name = 'General'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO note_categories (name, icon, color) VALUES ('General', 'N', '#2563eb')")
+        
+        # Create notes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                category_id INTEGER,
+                created_date TEXT,
+                modified_date TEXT,
+                color TEXT DEFAULT '#2563eb',
+                pinned INTEGER DEFAULT 0,
+                FOREIGN KEY (category_id) REFERENCES note_categories(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category_id)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes (pinned)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes (modified_date)")
         
         conn.commit()

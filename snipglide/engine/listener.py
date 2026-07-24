@@ -6,7 +6,7 @@ from pynput import keyboard
 from snipglide.database.snippet_repo import get_all_snippets, increment_usage
 from snipglide.database.autocorrect_repo import get_all_corrections
 from snipglide.engine.parser import parse_variables, get_form_fields, replace_form_fields
-from snipglide.engine.window_tracker import get_active_window_info, is_password_field_active
+from snipglide.engine.window_tracker import get_active_window_info
 from snipglide.utils.logger import logger
 
 class ExpansionEngine:
@@ -70,7 +70,9 @@ class ExpansionEngine:
         if not settings.get("enabled", True):
             return
 
-        if is_password_field_active():
+        win_title, win_proc = self._get_cached_window_info()
+        lower_title = win_title.lower()
+        if "password" in lower_title or "login" in lower_title or "sign in" in lower_title:
             self.buffer = ""
             return
 
@@ -99,9 +101,6 @@ class ExpansionEngine:
             max_len = int(settings.get("max_buffer", 250))
             self.buffer = self.buffer[-max_len:]
 
-            # Use cached window info to reduce system calls
-            win_title, win_proc = self._get_cached_window_info()
-            
             blacklist = settings.get("blacklist", "")
             if blacklist:
                 blocked_procs = [p.strip().lower() for p in blacklist.split(",") if p.strip()]
@@ -110,16 +109,12 @@ class ExpansionEngine:
                         self.buffer = ""
                         return
 
-            # Skip snippet matching if in idle mode and buffer is short
-            if self._is_idle_mode() and len(self.buffer) < 3:
-                return
-
             snippets = self._get_cached_snippets()
             
             matched_snippet = None
             matched_trigger = None
 
-            for s in sorted(snippets, key=lambda x: len(x.shortcut), reverse=True):
+            for s in snippets:
                 if not s.enabled:
                     continue
                 
@@ -201,7 +196,7 @@ class ExpansionEngine:
         now = time.time()
         if now - self._last_snippets_fetch > self._cache_ttl:
             try:
-                self._cached_snippets = get_all_snippets()
+                self._cached_snippets = sorted(get_all_snippets(), key=lambda x: len(x.shortcut), reverse=True)
             except Exception as e:
                 logger.error(f"Failed to fetch snippets: {e}")
             self._last_snippets_fetch = now

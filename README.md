@@ -15,6 +15,9 @@ A background text snippet expansion application for Windows.
 - No trailing colons or fixed prefixes required.
 - Modern look and feel supporting Light and Dark modes.
 - Runs silently in the background with a system tray icon.
+- Show or hide the app from the background with `Ctrl+Alt+Shift+S`.
+- Zoom the app UI with the toolbar buttons or `Ctrl++`, `Ctrl+-`, and `Ctrl+0`.
+- Notes section with categories, pinned notes, quick search, and one-click copy.
 - Toggle individual snippets on/off dynamically.
 - Quick real-time search.
 - Local automatic persistence: data is saved locally on your device under `%APPDATA%\SnipGlidePython` (it never leaves your machine).

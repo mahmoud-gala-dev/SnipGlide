@@ -69,7 +69,7 @@ class AppCoordinator:
         from pynput.keyboard import GlobalHotKeys
         self.hotkeys = GlobalHotKeys({
             '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
-            '<ctrl>+<alt>+s': lambda: self.window.after(0, self.toggle_window_visibility),
+            '<ctrl>+<alt>+<shift>+s': lambda: self.window.after(0, self.toggle_window_visibility),
         })
         self.hotkeys.start()
         
@@ -122,11 +122,12 @@ class AppCoordinator:
     def show_window(self):
         if self.window:
             self.window.after(0, self.window.deiconify)
+            self.window.after(10, lambda: self.window.state("normal"))
             self.window.after(20, self.window.lift)
             self.window.after(30, self.window.focus_force)
 
     def toggle_window_visibility(self):
-        """Toggle between showing and hiding the main window (Ctrl+Alt+S)."""
+        """Toggle between showing and hiding the main window (Ctrl+Alt+Shift+S)."""
         if self.window:
             if self.window.state() == "withdrawn":
                 self.show_window()

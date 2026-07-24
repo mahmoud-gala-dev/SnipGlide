@@ -3,10 +3,9 @@ from typing import Optional
 
 
 @dataclass
-class Group:
+class NoteCategory:
     id: Optional[int] = None
-    name: str = "General"
-    icon: str = "G"
+    name: str = ""
+    icon: str = "N"
     color: str = "#2563eb"
     description: str = ""
-    is_collapsed: bool = False

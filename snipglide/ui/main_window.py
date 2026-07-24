@@ -8,6 +8,7 @@ from snipglide.ui.settings_page import SettingsPage
 from snipglide.ui.marketplace import Marketplace
 from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
 from snipglide.ui.ai_assistant_page import AIAssistantPage
+from snipglide.ui.notes_page import NotesPage
 from snipglide.core.config import load_settings, save_settings, APP_NAME
 from snipglide.database.snippet_repo import get_all_snippets
 from snipglide.services.backup import (
@@ -26,6 +27,9 @@ class MainWindow(ctk.CTk):
         self.title(APP_NAME)
         self.geometry("1100x700")
         self.minsize(980, 600)
+        
+        # Store current zoom level
+        self._zoom_level = float(self.settings.get("ui_zoom", 1.0))
         
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -49,9 +53,13 @@ class MainWindow(ctk.CTk):
             "export_yaml": self._export_yaml,
             "backup_json": self._backup_json,
             "restore_json": self._restore_json,
+            "zoom_in": self.zoom_in,
+            "zoom_out": self.zoom_out,
+            "zoom_reset": self.zoom_reset,
         }
         self.toolbar = Toolbar(self.right_container, callbacks=toolbar_callbacks)
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
+        self._apply_widget_zoom(show_toast=False)
         
         self.content_frame = ctk.CTkFrame(self.right_container, fg_color="transparent")
         self.content_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(5, 15))
@@ -60,6 +68,7 @@ class MainWindow(ctk.CTk):
         
         self.pages["Dashboard"] = Dashboard(self.content_frame)
         self.pages["Snippets"] = SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings)
+        self.pages["Notes"] = NotesPage(self.content_frame, toast_callback=self.toast)
         self.pages["Settings"] = SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings)
         self.pages["Marketplace"] = Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views)
         self.pages["Clipboard"] = ClipboardHistoryPage(self.content_frame, toast_callback=self.toast, navigate_to_snippet_callback=self._navigate_to_snippet)
@@ -71,9 +80,16 @@ class MainWindow(ctk.CTk):
         self.sidebar.set_sidebar_font_size(self.settings.get("sidebar_font_size", 13))
         self.sidebar.apply_sidebar_direction(self.settings.get("sidebar_direction", "ltr"))
         self.sidebar.grid(row=0, column=0, sticky="nsew")
+        self._bind_window_shortcuts()
         
     def get_settings(self) -> dict:
         return self.settings
+
+    def _bind_window_shortcuts(self):
+        self.bind("<Control-plus>", lambda _e: self.zoom_in())
+        self.bind("<Control-equal>", lambda _e: self.zoom_in())
+        self.bind("<Control-minus>", lambda _e: self.zoom_out())
+        self.bind("<Control-0>", lambda _e: self.zoom_reset())
         
     def switch_page(self, page_id: str):
         if self.active_page:
@@ -210,4 +226,27 @@ class MainWindow(ctk.CTk):
     def _run_in_background(self):
         """Minimize the window to system tray (run in background mode)."""
         self.withdraw()
-        self.toast("Running in background - Press Ctrl+Alt+S to show")
+        self.toast("Running in background - Press Ctrl+Alt+Shift+S to show")
+
+    def zoom_in(self):
+        """Increase UI zoom by 10%."""
+        self._zoom_level = min(round(self._zoom_level + 0.1, 2), 1.8)
+        self._apply_widget_zoom()
+
+    def zoom_out(self):
+        """Decrease UI zoom by 10%."""
+        self._zoom_level = max(round(self._zoom_level - 0.1, 2), 0.8)
+        self._apply_widget_zoom()
+
+    def zoom_reset(self):
+        """Reset UI zoom to default."""
+        self._zoom_level = 1.0
+        self._apply_widget_zoom()
+
+    def _apply_widget_zoom(self, show_toast: bool = True):
+        """Apply zoom to CustomTkinter widgets and persist the setting."""
+        ctk.set_widget_scaling(self._zoom_level)
+        self.settings["ui_zoom"] = self._zoom_level
+        save_settings(self.settings)
+        if show_toast:
+            self.toast(f"Zoom: {int(self._zoom_level * 100)}%")

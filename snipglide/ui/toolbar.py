@@ -1,22 +1,23 @@
 import customtkinter as ctk
 
+
 class Toolbar(ctk.CTkFrame):
     def __init__(self, parent, callbacks: dict, **kwargs):
         super().__init__(parent, height=50, corner_radius=8, **kwargs)
         self.callbacks = callbacks
-        
+
         actions = [
-            ("new", "➕ New", "primary"),
-            ("run_background", "🌙 Hide to Tray", "special"),
-            ("import_xlsx", "📥 Imp Excel", "secondary"),
-            ("export_xlsx", "📤 Exp Excel", "secondary"),
-            ("template", "📁 Excel Temp", "secondary"),
-            ("import_yaml", "📥 Imp YAML", "secondary"),
-            ("export_yaml", "📤 Exp YAML", "secondary"),
-            ("backup_json", "📤 Backup All", "secondary"),
-            ("restore_json", "📥 Restore All", "secondary"),
+            ("new", "+ New", "primary"),
+            ("run_background", "Hide to Tray", "special"),
+            ("import_xlsx", "Imp Excel", "secondary"),
+            ("export_xlsx", "Exp Excel", "secondary"),
+            ("template", "Excel Temp", "secondary"),
+            ("import_yaml", "Imp YAML", "secondary"),
+            ("export_yaml", "Exp YAML", "secondary"),
+            ("backup_json", "Backup All", "secondary"),
+            ("restore_json", "Restore All", "secondary"),
         ]
-        
+
         for act_id, label, style in actions:
             if style == "primary":
                 fg = ("#2563eb", "#1d4ed8")
@@ -27,7 +28,7 @@ class Toolbar(ctk.CTkFrame):
             else:
                 fg = ("gray75", "gray25")
                 text_color = ("black", "white")
-            
+
             btn = ctk.CTkButton(
                 self,
                 text=label,
@@ -36,6 +37,26 @@ class Toolbar(ctk.CTkFrame):
                 fg_color=fg,
                 text_color=text_color,
                 font=ctk.CTkFont(size=11, weight="bold" if style in ["primary", "special"] else "normal"),
-                command=self.callbacks.get(act_id)
+                command=self.callbacks.get(act_id),
             )
             btn.pack(side="left", padx=4, pady=8)
+
+        zoom_frame = ctk.CTkFrame(self, fg_color="transparent")
+        zoom_frame.pack(side="right", padx=10, pady=8)
+
+        for label, callback_name, width in [
+            ("-", "zoom_out", 30),
+            ("100", "zoom_reset", 42),
+            ("+", "zoom_in", 30),
+        ]:
+            btn = ctk.CTkButton(
+                zoom_frame,
+                text=label,
+                width=width,
+                height=32,
+                fg_color=("gray75", "gray30"),
+                text_color=("black", "white"),
+                font=ctk.CTkFont(size=14),
+                command=self.callbacks.get(callback_name),
+            )
+            btn.pack(side="left", padx=2)
