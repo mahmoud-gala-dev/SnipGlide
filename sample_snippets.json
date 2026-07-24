@@ -1,0 +1,17 @@
+[
+  {
+    "trigger": "#sig",
+    "replacement": "مع خالص التحية،\nنادر",
+    "enabled": true
+  },
+  {
+    "trigger": "$date",
+    "replacement": "24-07-2026",
+    "enabled": true
+  },
+  {
+    "trigger": "!@#",
+    "replacement": "تم إدراج هذا النص بواسطة اختصار من الرموز.",
+    "enabled": true
+  }
+]
