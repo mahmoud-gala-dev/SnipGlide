@@ -89,7 +89,7 @@ class SnippetEditorView(ctk.CTkFrame):
         # Row 4: Regex, App & Window Filter
         r4_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
         r4_frame.pack(fill="x", padx=20, pady=4)
-        r4_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        r4_frame.grid_columnconfigure((1, 2, 3), weight=1)
 
         self.regex_var = ctk.BooleanVar(value=False)
         self.regex_cb = ctk.CTkCheckBox(r4_frame, text="Regex", variable=self.regex_var)
@@ -99,6 +99,9 @@ class SnippetEditorView(ctk.CTkFrame):
         self.app_filter_entry.grid(row=0, column=1, sticky="ew", padx=2)
         self.win_filter_entry = ctk.CTkEntry(r4_frame, placeholder_text="Window Title Filter", height=30, font=ctk.CTkFont(size=12))
         self.win_filter_entry.grid(row=0, column=2, sticky="ew", padx=(2, 0))
+
+        self.hotkey_entry = ctk.CTkEntry(r4_frame, placeholder_text="Hotkey e.g. <ctrl>+<alt>+1", height=30, font=ctk.CTkFont(size=12))
+        self.hotkey_entry.grid(row=0, column=3, sticky="ew", padx=(4, 0))
 
         # Row 5: Code Editor
         self.editor = CodeEditor(self.right_frame, height=300)
@@ -149,7 +152,7 @@ class SnippetEditorView(ctk.CTkFrame):
         self._new_snippet()
         
         from snipglide.utils.helpers import create_context_menu, apply_rtl_support
-        for attr in [self.search_entry, self.shortcut_entry, self.desc_entry, self.app_filter_entry, self.win_filter_entry]:
+        for attr in [self.search_entry, self.shortcut_entry, self.desc_entry, self.app_filter_entry, self.win_filter_entry, self.hotkey_entry]:
             create_context_menu(attr)
             apply_rtl_support(attr)
 
@@ -323,6 +326,8 @@ class SnippetEditorView(ctk.CTkFrame):
         self.app_filter_entry.insert(0, s.app_filter)
         self.win_filter_entry.delete(0, "end")
         self.win_filter_entry.insert(0, s.window_filter)
+        self.hotkey_entry.delete(0, "end")
+        self.hotkey_entry.insert(0, s.hotkey)
         
         # Set Group dropdown
         groups = get_all_groups()
@@ -345,6 +350,7 @@ class SnippetEditorView(ctk.CTkFrame):
         self.regex_var.set(False)
         self.app_filter_entry.delete(0, "end")
         self.win_filter_entry.delete(0, "end")
+        self.hotkey_entry.delete(0, "end")
         self.group_var.set("📁 General")
         self.lang_var.set("Plain Text")
         self.editor.set_text("")
@@ -376,7 +382,8 @@ class SnippetEditorView(ctk.CTkFrame):
             favorite=self.favorite_var.get(),
             regex_enabled=self.regex_var.get(),
             app_filter=self.app_filter_entry.get().strip(),
-            window_filter=self.win_filter_entry.get().strip()
+            window_filter=self.win_filter_entry.get().strip(),
+            hotkey=self.hotkey_entry.get().strip()
         )
         
         try:

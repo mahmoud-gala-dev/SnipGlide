@@ -23,6 +23,7 @@ class MainWindow(ctk.CTk):
         # Initialize attributes first to prevent callback crashes
         self.active_page = None
         self.pages = {}
+        self.page_order = ["Dashboard", "Snippets", "Notes", "Search", "Clipboard", "AIAssistant", "Settings", "Health", "Marketplace"]
         
         self.right_container = ctk.CTkFrame(self, fg_color="transparent")
         self.right_container.grid(row=0, column=1, sticky="nsew")
@@ -70,17 +71,44 @@ class MainWindow(ctk.CTk):
         self.bind("<Control-equal>", lambda _e: self.zoom_in())
         self.bind("<Control-minus>", lambda _e: self.zoom_out())
         self.bind("<Control-0>", lambda _e: self.zoom_reset())
+        self.bind("<Control-f>", lambda _e: self._select_page_from_shortcut("Search"))
         self.bind("<Escape>", lambda _e: self._hide_from_escape())
+        for index, page_id in enumerate(self.page_order, start=1):
+            self.bind(f"<Control-Key-{index}>", lambda _e, p=page_id: self._select_page_from_shortcut(p))
+        self.bind("<Alt-Left>", lambda _e: self._switch_relative_page(-1))
+        self.bind("<Alt-Right>", lambda _e: self._switch_relative_page(1))
 
     def _hide_from_escape(self):
         self.withdraw()
         return "break"
 
+    def _select_page_from_shortcut(self, page_id: str):
+        self.sidebar.select_page(page_id)
+        return "break"
+
+    def _switch_relative_page(self, step: int):
+        current_id = self._current_page_id()
+        if current_id not in self.page_order:
+            target = self.page_order[0]
+        else:
+            current_index = self.page_order.index(current_id)
+            target = self.page_order[(current_index + step) % len(self.page_order)]
+        self.sidebar.select_page(target)
+        return "break"
+
+    def _current_page_id(self):
+        for page_id, page in self.pages.items():
+            if page is self.active_page:
+                return page_id
+        return None
+
     def _create_pages(self):
         from snipglide.ui.dashboard import Dashboard
         from snipglide.ui.snippet_editor_view import SnippetEditorView
         from snipglide.ui.notes_page import NotesPage
+        from snipglide.ui.search_page import SearchPage
         from snipglide.ui.settings_page import SettingsPage
+        from snipglide.ui.health_page import HealthPage
         from snipglide.ui.marketplace import Marketplace
         from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
         from snipglide.ui.ai_assistant_page import AIAssistantPage
@@ -89,7 +117,18 @@ class MainWindow(ctk.CTk):
             "Dashboard": Dashboard(self.content_frame),
             "Snippets": SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings),
             "Notes": NotesPage(self.content_frame, toast_callback=self.toast),
+            "Search": SearchPage(
+                self.content_frame,
+                toast_callback=self.toast,
+                navigate_to_snippet_callback=self._navigate_to_snippet,
+            ),
             "Settings": SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings),
+            "Health": HealthPage(
+                self.content_frame,
+                toast_callback=self.toast,
+                settings_provider=self.get_settings,
+                save_settings_callback=self._save_settings,
+            ),
             "Marketplace": Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views),
             "Clipboard": ClipboardHistoryPage(
                 self.content_frame,
@@ -232,10 +271,9 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.asksaveasfilename(title="Backup to JSON", defaultextension=".json", initialfile="snipglide_backup.json", filetypes=[("JSON files", "*.json")])
         if file_path:
             try:
-                from snipglide.database.snippet_repo import get_all_snippets
-                from snipglide.services.backup import export_to_json
+                from snipglide.services.maintenance import export_full_package
 
-                export_to_json(get_all_snippets(), file_path)
+                export_full_package(file_path)
                 self.toast("Backup exported successfully.")
             except Exception as e:
                 self.toast(str(e), error=True)
@@ -244,11 +282,11 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.askopenfilename(title="Restore from JSON", filetypes=[("JSON files", "*.json")])
         if file_path:
             try:
-                from snipglide.services.backup import import_from_json
+                from snipglide.services.maintenance import import_full_package
 
-                count = import_from_json(file_path)
+                import_full_package(file_path)
                 self._refresh_all_views()
-                self.toast(f"Restored {count} snippets.")
+                self.toast("Restore completed. Restart recommended.")
             except Exception as e:
                 self.toast(str(e), error=True)
 

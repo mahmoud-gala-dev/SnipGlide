@@ -19,9 +19,11 @@ class Sidebar(ctk.CTkFrame):
             ("Dashboard", "Dashboard", "#2563eb"),
             ("Snippets", "Snippets", "#16a34a"),
             ("Notes", "Notes", "#f59e0b"),
+            ("Search", "Search", "#14b8a6"),
             ("Clipboard", "Clipboard", "#06b6d4"),
             ("AIAssistant", "AI Assistant", "#8b5cf6"),
             ("Settings", "Settings", "#64748b"),
+            ("Health", "Health", "#0f766e"),
             ("Marketplace", "Marketplace", "#ef4444"),
         ]
 

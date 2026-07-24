@@ -67,10 +67,12 @@ class AppCoordinator:
         self.clipboard_monitor.start()
         
         from pynput.keyboard import GlobalHotKeys
-        self.hotkeys = GlobalHotKeys({
+        hotkey_map = {
             '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
             '<ctrl>+<alt>+<shift>+s': lambda: self.window.after(0, self.toggle_window_visibility),
-        })
+        }
+        hotkey_map.update(self._load_snippet_hotkeys())
+        self.hotkeys = GlobalHotKeys(hotkey_map)
         self.hotkeys.start()
         
         if self.settings.get("master_password_enabled", False) and self.settings.get("lock_on_startup", False):
@@ -133,6 +135,28 @@ class AppCoordinator:
                 self.show_window()
             else:
                 self.hide_window()
+
+    def _load_snippet_hotkeys(self):
+        mappings = {}
+        try:
+            from pynput.keyboard import HotKey
+            from snipglide.database.snippet_repo import get_all_snippets
+            for snippet in get_all_snippets():
+                hotkey = (snippet.hotkey or "").strip()
+                if not hotkey or not snippet.enabled:
+                    continue
+                try:
+                    HotKey.parse(hotkey)
+                except Exception:
+                    logger.warning(f"Invalid snippet hotkey ignored: {hotkey}")
+                    continue
+                if hotkey in mappings:
+                    logger.warning(f"Duplicate snippet hotkey ignored: {hotkey}")
+                    continue
+                mappings[hotkey] = lambda s=snippet: self.engine._expand("", s)
+        except Exception as e:
+            logger.error(f"Failed to load snippet hotkeys: {e}")
+        return mappings
             
     def _create_tray_image(self):
         image = Image.new("RGB", (64, 64), "white")

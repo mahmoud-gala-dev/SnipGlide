@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 
 import customtkinter as ctk
@@ -8,6 +9,7 @@ from snipglide.database.snippet_repo import get_statistics
 class Dashboard(ctk.CTkFrame):
     def __init__(self, parent, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
+        self._last_refresh = 0
 
         self.grid_columnconfigure((0, 1), weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -65,6 +67,11 @@ class Dashboard(ctk.CTkFrame):
         return card
 
     def refresh_stats(self):
+        now_ts = time.time()
+        if now_ts - self._last_refresh < 5:
+            return
+        self._last_refresh = now_ts
+
         stats = get_statistics()
 
         self.total_snippets_card.lbl_value.configure(text=str(stats["total_snippets"]))

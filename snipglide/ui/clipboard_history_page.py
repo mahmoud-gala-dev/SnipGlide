@@ -1,4 +1,5 @@
 import math
+import time
 
 import customtkinter as ctk
 
@@ -20,6 +21,8 @@ class ClipboardHistoryPage(ctk.CTkFrame):
         self.navigate_to_snippet_callback = navigate_to_snippet_callback
         self.current_page = 1
         self.total_pages = 1
+        self._last_refresh = 0
+        self._force_next_refresh = True
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -61,6 +64,13 @@ class ClipboardHistoryPage(ctk.CTkFrame):
         self.refresh_history()
 
     def refresh_history(self):
+        now_ts = time.time()
+        if not self._force_next_refresh and now_ts - self._last_refresh < 3:
+            return
+
+        self._force_next_refresh = False
+        self._last_refresh = now_ts
+
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
 
@@ -91,11 +101,13 @@ class ClipboardHistoryPage(ctk.CTkFrame):
     def _previous_page(self):
         if self.current_page > 1:
             self.current_page -= 1
+            self._force_next_refresh = True
             self.refresh_history()
 
     def _next_page(self):
         if self.current_page < self.total_pages:
             self.current_page += 1
+            self._force_next_refresh = True
             self.refresh_history()
 
     def _create_history_row(self, text: str):
@@ -147,6 +159,7 @@ class ClipboardHistoryPage(ctk.CTkFrame):
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM clipboard_history WHERE content = ?", (text,))
                 conn.commit()
+            self._force_next_refresh = True
             self.refresh_history()
             self.toast_callback("Entry deleted.")
         except Exception as e:
@@ -156,6 +169,7 @@ class ClipboardHistoryPage(ctk.CTkFrame):
         try:
             clear_clipboard_history()
             self.current_page = 1
+            self._force_next_refresh = True
             self.refresh_history()
             self.toast_callback("Clipboard history cleared.")
         except Exception as e:

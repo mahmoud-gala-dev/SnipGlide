@@ -13,6 +13,10 @@ class CodeEditor(ctk.CTkFrame):
 
         self._current_font_size = 13
         self._current_line_spacing = 4
+        self._line_numbers_job = None
+        self._rtl_job = None
+        self._last_line_count = None
+        self._last_rtl_text = None
 
         # ── Toolbar: Font Size + Line Height ──────────────────────
         toolbar = ctk.CTkFrame(self, fg_color="transparent", height=32)
@@ -92,6 +96,11 @@ class CodeEditor(ctk.CTkFrame):
         def apply_rtl_per_line():
             """Apply RTL or LTR justify tag to every line based on content."""
             try:
+                current_text = self.textbox.get("1.0", "end-1c")
+                if current_text == self._last_rtl_text:
+                    return getattr(self, "_is_arabic_mode", False)
+
+                self._last_rtl_text = current_text
                 self.textbox.tag_remove("rtl", "1.0", "end")
                 self.textbox.tag_remove("ltr", "1.0", "end")
                 total_lines = int(self.textbox.index("end-1c").split(".")[0])
@@ -108,6 +117,7 @@ class CodeEditor(ctk.CTkFrame):
                 return False
 
         def on_key(event=None):
+            self._rtl_job = None
             try:
                 has_arabic = apply_rtl_per_line()
                 from snipglide.core.config import get_arabic_font_family
@@ -121,9 +131,14 @@ class CodeEditor(ctk.CTkFrame):
             except Exception:
                 pass
 
-        self.textbox.bind("<KeyRelease>", on_key, add="+")
+        def schedule_rtl_check(event=None):
+            if self._rtl_job:
+                self.after_cancel(self._rtl_job)
+            self._rtl_job = self.after(220, on_key)
+
+        self.textbox.bind("<KeyRelease>", schedule_rtl_check, add="+")
         # Also apply on paste
-        self.textbox.bind("<<Paste>>", lambda e: self.after(50, on_key), add="+")
+        self.textbox.bind("<<Paste>>", lambda e: self.after(80, on_key), add="+")
         # Run once to set initial state
         self.after(300, on_key)
 
@@ -152,15 +167,22 @@ class CodeEditor(ctk.CTkFrame):
     def set_text(self, text: str):
         self.textbox_wrapper.delete("1.0", "end")
         self.textbox_wrapper.insert("1.0", text)
+        self._last_line_count = None
+        self._last_rtl_text = None
         self.update_line_numbers()
         # Re-evaluate RTL after loading text
-        self.after(50, lambda: self.textbox.event_generate("<KeyRelease>"))
+        self.after(80, lambda: self.textbox.event_generate("<KeyRelease>"))
 
     def update_line_numbers(self):
+        self._line_numbers_job = None
+        lines_count = int(self.textbox.index("end-1c").split(".")[0])
+        if lines_count == self._last_line_count:
+            return
+
+        self._last_line_count = lines_count
         self.line_numbers.configure(state="normal")
         self.line_numbers.delete("1.0", "end")
 
-        lines_count = int(self.textbox.index("end-1c").split(".")[0])
         lines_text = "\n".join(str(i) for i in range(1, lines_count + 1))
 
         self.line_numbers.insert("1.0", lines_text)
@@ -168,10 +190,15 @@ class CodeEditor(ctk.CTkFrame):
 
     # ── Internal events ───────────────────────────────────────
     def _on_key_release(self, event):
-        self.update_line_numbers()
+        self._schedule_line_numbers_update()
 
     def _on_configure(self, event):
-        self.update_line_numbers()
+        self._schedule_line_numbers_update()
+
+    def _schedule_line_numbers_update(self):
+        if self._line_numbers_job:
+            self.after_cancel(self._line_numbers_job)
+        self._line_numbers_job = self.after(120, self.update_line_numbers)
 
     # ── Syntax highlighting ───────────────────────────────────
     def setup_highlight_tags(self):

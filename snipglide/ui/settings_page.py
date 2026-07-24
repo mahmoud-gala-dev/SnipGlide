@@ -250,9 +250,9 @@ class SettingsPage(ctk.CTkFrame):
         path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
         if not path:
             return
-        from snipglide.services.backup import export_backup
-        if export_backup(path):
-            self._show_info_popup("Export Backup", "Database backup exported successfully!", error=False)
+        from snipglide.services.maintenance import export_full_package
+        if export_full_package(path):
+            self._show_info_popup("Export Backup", "Full backup exported successfully.", error=False)
         else:
             self._show_info_popup("Export Backup", "Failed to export backup. Check logs for details.", error=True)
 
@@ -261,9 +261,9 @@ class SettingsPage(ctk.CTkFrame):
         path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
         if not path:
             return
-        from snipglide.services.backup import import_backup
-        if import_backup(path):
-            self._show_info_popup("Import Backup", "Database backup imported successfully! Please restart the application to reload changes.", error=False)
+        from snipglide.services.maintenance import import_full_package
+        if import_full_package(path):
+            self._show_info_popup("Import Backup", "Full backup imported successfully. Please restart the application to reload changes.", error=False)
         else:
             self._show_info_popup("Import Backup", "Failed to import backup. Verify file schema.", error=True)
 

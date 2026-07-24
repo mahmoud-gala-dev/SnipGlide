@@ -26,7 +26,9 @@ class NotesPage(ctk.CTkFrame):
         self.category_id_to_display = {}
         self._refresh_job = None
         self._editor_settings_job = None
+        self._autosave_job = None
         self._last_copied_selection = ""
+        self._last_saved_state = None
         self.editor_direction = get_note_setting("editor_direction", "auto")
         self.editor_font_size = self._get_int_note_setting("editor_font_size", 14, 10, 28)
         self.editor_line_spacing = self._get_int_note_setting("editor_line_spacing", 4, 0, 20)
@@ -94,6 +96,7 @@ class NotesPage(ctk.CTkFrame):
 
         self.title_entry = ctk.CTkEntry(title_row, placeholder_text="Note title...", font=ctk.CTkFont(size=14))
         self.title_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        self.title_entry.bind("<KeyRelease>", lambda _e: self._schedule_autosave(), add="+")
         create_context_menu(self.title_entry)
         apply_rtl_support(self.title_entry)
 
@@ -113,6 +116,7 @@ class NotesPage(ctk.CTkFrame):
         create_context_menu(self.content_text)
         apply_rtl_support(self.content_text)
         self.content_text.bind("<KeyRelease>", lambda _e: self._schedule_apply_editor_settings(), add="+")
+        self.content_text.bind("<KeyRelease>", lambda _e: self._schedule_autosave(), add="+")
         self.content_text.bind("<ButtonRelease-1>", lambda _e: self._copy_current_selection(), add="+")
         self.title_entry.bind("<ButtonRelease-1>", lambda _e: self._copy_current_selection(), add="+")
 
@@ -157,6 +161,9 @@ class NotesPage(ctk.CTkFrame):
             command=self._copy_note,
         )
         self.copy_btn.pack(side="left", padx=(0, 5))
+
+        self.save_state_label = ctk.CTkLabel(btn_row, text="Saved", text_color="gray")
+        self.save_state_label.pack(side="right", padx=5)
 
         self.pin_btn = ctk.CTkButton(
             btn_row,
@@ -213,6 +220,25 @@ class NotesPage(ctk.CTkFrame):
         if self._editor_settings_job:
             self.after_cancel(self._editor_settings_job)
         self._editor_settings_job = self.after(250, self._apply_editor_settings)
+
+    def _schedule_autosave(self):
+        if self._autosave_job:
+            self.after_cancel(self._autosave_job)
+        self.save_state_label.configure(text="Editing...", text_color="#f59e0b")
+        self._autosave_job = self.after(1500, self._autosave_note)
+
+    def _autosave_note(self):
+        self._autosave_job = None
+        title = self.title_entry.get().strip()
+        content = self.content_text.get("1.0", "end-1c")
+        current_state = (self.selected_note_id, title, content, self.category_var.get())
+        if current_state == self._last_saved_state:
+            self.save_state_label.configure(text="Saved", text_color="gray")
+            return
+        if not title or not content.strip():
+            self.save_state_label.configure(text="Draft", text_color="gray")
+            return
+        self._save_note(show_toast=False)
 
     def _category_display(self, category: NoteCategory) -> str:
         return f"{category.icon} {category.name}".strip()
@@ -390,6 +416,9 @@ class NotesPage(ctk.CTkFrame):
             btn.pack(fill="x", pady=4)
 
     def _select_note(self, note: Note):
+        if self._autosave_job:
+            self.after_cancel(self._autosave_job)
+            self._autosave_job = None
         self.selected_note_id = note.id
         self.title_entry.delete(0, "end")
         self.title_entry.insert(0, note.title)
@@ -404,8 +433,13 @@ class NotesPage(ctk.CTkFrame):
         if note.content.strip():
             self._copy_text_to_clipboard(note.content)
             self.toast_callback("Note copied to clipboard.")
+        self._last_saved_state = (self.selected_note_id, note.title, note.content, self.category_var.get())
+        self.save_state_label.configure(text="Saved", text_color="gray")
 
     def _new_note(self):
+        if self._autosave_job:
+            self.after_cancel(self._autosave_job)
+            self._autosave_job = None
         self.selected_note_id = None
         self.title_entry.delete(0, "end")
         self.content_text.delete("1.0", "end")
@@ -413,9 +447,11 @@ class NotesPage(ctk.CTkFrame):
             self.category_var.set(self.category_filter.get())
         self._apply_editor_settings()
         self.pin_btn.configure(text="Pin", fg_color=("gray75", "gray25"))
+        self._last_saved_state = None
+        self.save_state_label.configure(text="Draft", text_color="gray")
         self.title_entry.focus_set()
 
-    def _save_note(self):
+    def _save_note(self, show_toast: bool = True):
         title = self.title_entry.get().strip()
         content = self.content_text.get("1.0", "end-1c")
 
@@ -439,14 +475,20 @@ class NotesPage(ctk.CTkFrame):
         try:
             if self.selected_note_id is None:
                 self.selected_note_id = add_note(note)
-                self.toast_callback("Note created.")
+                if show_toast:
+                    self.toast_callback("Note created.")
             else:
                 update_note(note)
-                self.toast_callback("Note updated.")
+                if show_toast:
+                    self.toast_callback("Note updated.")
 
+            self._last_saved_state = (self.selected_note_id, title, content, selected_category)
+            self.save_state_label.configure(text="Saved", text_color="#16a34a")
             self.refresh_list()
         except Exception as e:
-            self.toast_callback(f"Failed: {e}", error=True)
+            self.save_state_label.configure(text="Save failed", text_color="#dc2626")
+            if show_toast:
+                self.toast_callback(f"Failed: {e}", error=True)
 
     def _delete_note(self):
         if not self.selected_note_id:
