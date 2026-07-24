@@ -2,7 +2,7 @@ import customtkinter as ctk
 import threading
 from snipglide.models.snippet import Snippet
 from snipglide.models.group import Group
-from snipglide.database.snippet_repo import get_all_snippets, add_snippet, update_snippet, delete_snippet
+from snipglide.database.snippet_repo import get_all_snippets, get_snippet_by_shortcut, add_snippet, update_snippet, delete_snippet
 from snipglide.database.group_repo import get_all_groups, add_group
 from snipglide.ui.widgets.code_editor import CodeEditor
 from snipglide.ui.dialogs.group_dialog import GroupDialog
@@ -16,6 +16,7 @@ class SnippetEditorView(ctk.CTkFrame):
         self.settings_provider = settings_provider
         self.selected_index = None
         self.snippets_list = []
+        self._refresh_job = None
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
@@ -30,7 +31,7 @@ class SnippetEditorView(ctk.CTkFrame):
         # Search & Group Filter
         self.search_entry = ctk.CTkEntry(self.left_frame, placeholder_text="Search shortcut...")
         self.search_entry.grid(row=0, column=0, sticky="ew", padx=15, pady=(15, 5))
-        self.search_entry.bind("<KeyRelease>", lambda _e: self.refresh_list())
+        self.search_entry.bind("<KeyRelease>", lambda _e: self._schedule_refresh_list())
         
         self.group_filter = ctk.CTkOptionMenu(self.left_frame, values=["All Groups"], command=lambda _: self.refresh_list())
         self.group_filter.grid(row=1, column=0, sticky="ew", padx=15, pady=5)
@@ -246,8 +247,14 @@ class SnippetEditorView(ctk.CTkFrame):
         display_groups = [f"{g.icon} {g.name}" for g in groups]
         self.group_menu.configure(values=display_groups)
         self.group_filter.configure(values=["All Groups"] + display_groups)
+
+    def _schedule_refresh_list(self):
+        if self._refresh_job:
+            self.after_cancel(self._refresh_job)
+        self._refresh_job = self.after(180, self.refresh_list)
         
     def refresh_list(self):
+        self._refresh_job = None
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
             
@@ -373,14 +380,17 @@ class SnippetEditorView(ctk.CTkFrame):
         )
         
         try:
+            existing = get_snippet_by_shortcut(shortcut)
             if getattr(self, "selected_snippet_id", None) is None:
-                existing = get_snippet_by_shortcut(shortcut)
                 if existing:
                     self.toast_callback("Shortcut already exists.", error=True)
                     return
                 add_snippet(snippet)
                 self.toast_callback("Snippet created!")
             else:
+                if existing and existing.id != self.selected_snippet_id:
+                    self.toast_callback("Shortcut already exists.", error=True)
+                    return
                 snippet.id = self.selected_snippet_id
                 update_snippet(snippet)
                 self.toast_callback("Snippet updated!")

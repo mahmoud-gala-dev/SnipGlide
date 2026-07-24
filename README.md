@@ -18,6 +18,9 @@ A background text snippet expansion application for Windows.
 - Show or hide the app from the background with `Ctrl+Alt+Shift+S`.
 - Zoom the app UI with the toolbar buttons or `Ctrl++`, `Ctrl+-`, and `Ctrl+0`.
 - Notes section with categories, pinned notes, quick search, and one-click copy.
+- Notes editor supports Arabic RTL writing, font size, line spacing, and stores notes-page preferences in SQLite.
+- Clicking a note copies its content to the clipboard immediately.
+- Clipboard history keeps the latest 50 entries only, shown as 5 pages with 10 entries per page.
 - Toggle individual snippets on/off dynamically.
 - Quick real-time search.
 - Local automatic persistence: data is saved locally on your device under `%APPDATA%\SnipGlidePython` (it never leaves your machine).

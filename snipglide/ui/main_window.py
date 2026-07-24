@@ -1,22 +1,8 @@
 import customtkinter as ctk
-import openpyxl
 from snipglide.ui.sidebar import Sidebar
 from snipglide.ui.toolbar import Toolbar
-from snipglide.ui.dashboard import Dashboard
-from snipglide.ui.snippet_editor_view import SnippetEditorView
-from snipglide.ui.settings_page import SettingsPage
-from snipglide.ui.marketplace import Marketplace
-from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
-from snipglide.ui.ai_assistant_page import AIAssistantPage
-from snipglide.ui.notes_page import NotesPage
 from snipglide.core.config import load_settings, save_settings, APP_NAME
-from snipglide.database.snippet_repo import get_all_snippets
-from snipglide.services.backup import (
-    export_to_excel, import_from_excel, export_to_yaml, import_from_yaml,
-    export_to_json, import_from_json
-)
 from tkinter import filedialog
-import os
 
 class MainWindow(ctk.CTk):
     def __init__(self, engine_toggle_callback, **kwargs):
@@ -25,8 +11,8 @@ class MainWindow(ctk.CTk):
         self.settings = load_settings()
         
         self.title(APP_NAME)
-        self.geometry("1100x700")
-        self.minsize(980, 600)
+        self.geometry("1280x760")
+        self.minsize(1180, 680)
         
         # Store current zoom level
         self._zoom_level = float(self.settings.get("ui_zoom", 1.0))
@@ -58,21 +44,15 @@ class MainWindow(ctk.CTk):
             "zoom_reset": self.zoom_reset,
         }
         self.toolbar = Toolbar(self.right_container, callbacks=toolbar_callbacks)
-        self.toolbar.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 5))
+        self.toolbar.grid(row=0, column=0, sticky="ew", padx=20, pady=(15, 8))
         self._apply_widget_zoom(show_toast=False)
         
         self.content_frame = ctk.CTkFrame(self.right_container, fg_color="transparent")
-        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(5, 15))
+        self.content_frame.grid(row=1, column=0, sticky="nsew", padx=20, pady=(8, 15))
         self.content_frame.grid_columnconfigure(0, weight=1)
         self.content_frame.grid_rowconfigure(0, weight=1)
         
-        self.pages["Dashboard"] = Dashboard(self.content_frame)
-        self.pages["Snippets"] = SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings)
-        self.pages["Notes"] = NotesPage(self.content_frame, toast_callback=self.toast)
-        self.pages["Settings"] = SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings)
-        self.pages["Marketplace"] = Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views)
-        self.pages["Clipboard"] = ClipboardHistoryPage(self.content_frame, toast_callback=self.toast, navigate_to_snippet_callback=self._navigate_to_snippet)
-        self.pages["AIAssistant"] = AIAssistantPage(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings, refresh_callback=self._refresh_all_views)
+        self._create_pages()
         
         # Create and place Sidebar after pages are configured
         self.sidebar = Sidebar(self, select_callback=self.switch_page)
@@ -90,8 +70,44 @@ class MainWindow(ctk.CTk):
         self.bind("<Control-equal>", lambda _e: self.zoom_in())
         self.bind("<Control-minus>", lambda _e: self.zoom_out())
         self.bind("<Control-0>", lambda _e: self.zoom_reset())
+        self.bind("<Escape>", lambda _e: self._hide_from_escape())
+
+    def _hide_from_escape(self):
+        self.withdraw()
+        return "break"
+
+    def _create_pages(self):
+        from snipglide.ui.dashboard import Dashboard
+        from snipglide.ui.snippet_editor_view import SnippetEditorView
+        from snipglide.ui.notes_page import NotesPage
+        from snipglide.ui.settings_page import SettingsPage
+        from snipglide.ui.marketplace import Marketplace
+        from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
+        from snipglide.ui.ai_assistant_page import AIAssistantPage
+
+        self.pages = {
+            "Dashboard": Dashboard(self.content_frame),
+            "Snippets": SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings),
+            "Notes": NotesPage(self.content_frame, toast_callback=self.toast),
+            "Settings": SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings),
+            "Marketplace": Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views),
+            "Clipboard": ClipboardHistoryPage(
+                self.content_frame,
+                toast_callback=self.toast,
+                navigate_to_snippet_callback=self._navigate_to_snippet,
+            ),
+            "AIAssistant": AIAssistantPage(
+                self.content_frame,
+                toast_callback=self.toast,
+                settings_provider=self.get_settings,
+                refresh_callback=self._refresh_all_views,
+            ),
+        }
         
     def switch_page(self, page_id: str):
+        if self.active_page is self.pages.get(page_id):
+            return
+
         if self.active_page:
             self.active_page.grid_forget()
             
@@ -100,9 +116,9 @@ class MainWindow(ctk.CTk):
         self.active_page = page
         
         if page_id == "Dashboard":
-            self.pages["Dashboard"].refresh_stats()
+            page.refresh_stats()
         elif page_id == "Clipboard":
-            self.pages["Clipboard"].refresh_history()
+            page.refresh_history()
             
     def toast(self, message: str, error: bool = False):
         popup = ctk.CTkToplevel(self)
@@ -138,8 +154,10 @@ class MainWindow(ctk.CTk):
         self.toast("Settings saved successfully!")
         
     def _refresh_all_views(self):
-        self.pages["Snippets"].update_group_dropdowns()
-        self.pages["Snippets"].refresh_list()
+        snippets_page = self.pages.get("Snippets")
+        if snippets_page:
+            snippets_page.update_group_dropdowns()
+            snippets_page.refresh_list()
         
     def _trigger_new_snippet(self):
         self.switch_page("Snippets")
@@ -150,6 +168,8 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.askopenfilename(title="Import Excel file", filetypes=[("Excel files", "*.xlsx")])
         if file_path:
             try:
+                from snipglide.services.backup import import_from_excel
+
                 count = import_from_excel(file_path)
                 self._refresh_all_views()
                 self.toast(f"Imported {count} snippets.")
@@ -160,6 +180,9 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.asksaveasfilename(title="Export Excel file", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if file_path:
             try:
+                from snipglide.database.snippet_repo import get_all_snippets
+                from snipglide.services.backup import export_to_excel
+
                 export_to_excel(get_all_snippets(), file_path)
                 self.toast("Export completed successfully.")
             except Exception as e:
@@ -169,6 +192,8 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.asksaveasfilename(title="Download Excel Template", defaultextension=".xlsx", initialfile="snipglide_template.xlsx", filetypes=[("Excel files", "*.xlsx")])
         if file_path:
             try:
+                import openpyxl
+
                 wb = openpyxl.Workbook()
                 ws = wb.active
                 ws.title = "Template"
@@ -183,6 +208,8 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.askopenfilename(title="Import YAML file", filetypes=[("YAML files", "*.yaml;*.yml")])
         if file_path:
             try:
+                from snipglide.services.backup import import_from_yaml
+
                 count = import_from_yaml(file_path)
                 self._refresh_all_views()
                 self.toast(f"Imported {count} snippets.")
@@ -193,6 +220,9 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.asksaveasfilename(title="Export YAML file", defaultextension=".yaml", filetypes=[("YAML files", "*.yaml")])
         if file_path:
             try:
+                from snipglide.database.snippet_repo import get_all_snippets
+                from snipglide.services.backup import export_to_yaml
+
                 export_to_yaml(get_all_snippets(), file_path)
                 self.toast("Export completed successfully.")
             except Exception as e:
@@ -202,6 +232,9 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.asksaveasfilename(title="Backup to JSON", defaultextension=".json", initialfile="snipglide_backup.json", filetypes=[("JSON files", "*.json")])
         if file_path:
             try:
+                from snipglide.database.snippet_repo import get_all_snippets
+                from snipglide.services.backup import export_to_json
+
                 export_to_json(get_all_snippets(), file_path)
                 self.toast("Backup exported successfully.")
             except Exception as e:
@@ -211,6 +244,8 @@ class MainWindow(ctk.CTk):
         file_path = filedialog.askopenfilename(title="Restore from JSON", filetypes=[("JSON files", "*.json")])
         if file_path:
             try:
+                from snipglide.services.backup import import_from_json
+
                 count = import_from_json(file_path)
                 self._refresh_all_views()
                 self.toast(f"Restored {count} snippets.")

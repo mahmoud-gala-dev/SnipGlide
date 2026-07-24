@@ -10,6 +10,7 @@ from snipglide.database.note_repo import (
     toggle_pin,
     update_note,
 )
+from snipglide.database.note_settings_repo import get_note_setting, set_note_setting, set_note_settings
 from snipglide.models.note import Note
 from snipglide.models.note_category import NoteCategory
 from snipglide.ui.dialogs.group_dialog import GroupDialog
@@ -23,6 +24,13 @@ class NotesPage(ctk.CTkFrame):
         self.selected_note_id = None
         self.category_display_to_id = {}
         self.category_id_to_display = {}
+        self._refresh_job = None
+        self._editor_settings_job = None
+        self._last_copied_selection = ""
+        self.editor_direction = get_note_setting("editor_direction", "auto")
+        self.editor_font_size = self._get_int_note_setting("editor_font_size", 14, 10, 28)
+        self.editor_line_spacing = self._get_int_note_setting("editor_line_spacing", 4, 0, 20)
+        self._persist_editor_settings()
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
@@ -40,7 +48,7 @@ class NotesPage(ctk.CTkFrame):
         self.category_filter = ctk.CTkOptionMenu(
             category_row,
             values=["All Notes"],
-            command=lambda _: self.refresh_list(),
+            command=self._on_filter_changed,
         )
         self.category_filter.grid(row=0, column=0, sticky="ew", padx=(0, 5))
 
@@ -59,7 +67,7 @@ class NotesPage(ctk.CTkFrame):
 
         self.search_entry = ctk.CTkEntry(self.left_frame, placeholder_text="Search notes...")
         self.search_entry.grid(row=1, column=0, sticky="ew", padx=15, pady=5)
-        self.search_entry.bind("<KeyRelease>", lambda _e: self.refresh_list())
+        self.search_entry.bind("<KeyRelease>", lambda _e: self._schedule_refresh_list())
         create_context_menu(self.search_entry)
         apply_rtl_support(self.search_entry)
 
@@ -100,12 +108,46 @@ class NotesPage(ctk.CTkFrame):
         self.add_cat_btn = ctk.CTkButton(cat_frame, text="+", width=34, command=self._add_category)
         self.add_cat_btn.grid(row=0, column=1)
 
-        self.content_text = ctk.CTkTextbox(self.right_frame, font=ctk.CTkFont(size=13), wrap="word")
+        self.content_text = ctk.CTkTextbox(self.right_frame, font=ctk.CTkFont(size=self.editor_font_size), wrap="word")
         self.content_text.grid(row=2, column=0, sticky="nsew", padx=20, pady=5)
         create_context_menu(self.content_text)
+        apply_rtl_support(self.content_text)
+        self.content_text.bind("<KeyRelease>", lambda _e: self._schedule_apply_editor_settings(), add="+")
+        self.content_text.bind("<ButtonRelease-1>", lambda _e: self._copy_current_selection(), add="+")
+        self.title_entry.bind("<ButtonRelease-1>", lambda _e: self._copy_current_selection(), add="+")
+
+        editor_settings_row = ctk.CTkFrame(self.right_frame, fg_color="transparent")
+        editor_settings_row.grid(row=3, column=0, sticky="ew", padx=20, pady=5)
+        editor_settings_row.grid_columnconfigure(4, weight=1)
+
+        self.direction_control = ctk.CTkSegmentedButton(
+            editor_settings_row,
+            values=["Auto", "LTR", "RTL"],
+            command=self._set_editor_direction,
+        )
+        self.direction_control.set(self.editor_direction.upper() if self.editor_direction != "auto" else "Auto")
+        self.direction_control.grid(row=0, column=0, sticky="w", padx=(0, 12))
+
+        self.font_size_label = ctk.CTkLabel(editor_settings_row, text=f"Font {self.editor_font_size}")
+        self.font_size_label.grid(row=0, column=1, sticky="w", padx=(0, 6))
+        ctk.CTkButton(editor_settings_row, text="-", width=30, command=lambda: self._change_font_size(-1)).grid(
+            row=0, column=2, padx=2
+        )
+        ctk.CTkButton(editor_settings_row, text="+", width=30, command=lambda: self._change_font_size(1)).grid(
+            row=0, column=3, padx=(2, 12)
+        )
+
+        self.line_spacing_label = ctk.CTkLabel(editor_settings_row, text=f"Line {self.editor_line_spacing}")
+        self.line_spacing_label.grid(row=0, column=4, sticky="e", padx=(0, 6))
+        ctk.CTkButton(editor_settings_row, text="-", width=30, command=lambda: self._change_line_spacing(-1)).grid(
+            row=0, column=5, padx=2
+        )
+        ctk.CTkButton(editor_settings_row, text="+", width=30, command=lambda: self._change_line_spacing(1)).grid(
+            row=0, column=6, padx=2
+        )
 
         btn_row = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        btn_row.grid(row=3, column=0, sticky="ew", padx=20, pady=5)
+        btn_row.grid(row=4, column=0, sticky="ew", padx=20, pady=5)
 
         self.copy_btn = ctk.CTkButton(
             btn_row,
@@ -126,7 +168,7 @@ class NotesPage(ctk.CTkFrame):
         self.pin_btn.pack(side="left", padx=5)
 
         action_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        action_frame.grid(row=4, column=0, sticky="ew", padx=20, pady=(5, 15))
+        action_frame.grid(row=5, column=0, sticky="ew", padx=20, pady=(5, 15))
         action_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         self.save_btn = ctk.CTkButton(action_frame, text="Save (Ctrl+S)", command=self._save_note)
@@ -151,8 +193,10 @@ class NotesPage(ctk.CTkFrame):
 
         self.after(100, self._bind_shortcuts)
         self.update_category_dropdowns()
+        self._restore_note_settings()
         self.refresh_list()
         self._new_note()
+        self._apply_editor_settings()
 
     def _bind_shortcuts(self):
         top = self.winfo_toplevel()
@@ -160,8 +204,86 @@ class NotesPage(ctk.CTkFrame):
         top.bind("<Control-n>", lambda _e: self._new_note())
         top.bind("<Control-d>", lambda _e: self._delete_note())
 
+    def _schedule_refresh_list(self):
+        if self._refresh_job:
+            self.after_cancel(self._refresh_job)
+        self._refresh_job = self.after(180, self.refresh_list)
+
+    def _schedule_apply_editor_settings(self):
+        if self._editor_settings_job:
+            self.after_cancel(self._editor_settings_job)
+        self._editor_settings_job = self.after(250, self._apply_editor_settings)
+
     def _category_display(self, category: NoteCategory) -> str:
         return f"{category.icon} {category.name}".strip()
+
+    def _get_int_note_setting(self, key: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            value = int(get_note_setting(key, str(default)))
+        except ValueError:
+            value = default
+        return min(max(value, minimum), maximum)
+
+    def _on_filter_changed(self, selected: str):
+        set_note_setting("last_category_filter", selected)
+        self.refresh_list()
+
+    def _set_editor_direction(self, selected: str):
+        self.editor_direction = selected.lower()
+        self._persist_editor_settings()
+        self._apply_editor_settings()
+
+    def _change_font_size(self, delta: int):
+        self.editor_font_size = min(max(self.editor_font_size + delta, 10), 28)
+        self._persist_editor_settings()
+        self.font_size_label.configure(text=f"Font {self.editor_font_size}")
+        self._apply_editor_settings()
+
+    def _change_line_spacing(self, delta: int):
+        self.editor_line_spacing = min(max(self.editor_line_spacing + delta, 0), 20)
+        self._persist_editor_settings()
+        self.line_spacing_label.configure(text=f"Line {self.editor_line_spacing}")
+        self._apply_editor_settings()
+
+    def _persist_editor_settings(self):
+        set_note_settings(
+            {
+                "editor_direction": self.editor_direction,
+                "editor_font_size": str(self.editor_font_size),
+                "editor_line_spacing": str(self.editor_line_spacing),
+            }
+        )
+
+    def _apply_editor_settings(self):
+        self._editor_settings_job = None
+        target = getattr(self.content_text, "_textbox", self.content_text)
+        try:
+            from snipglide.core.config import get_arabic_font_family
+
+            target.configure(font=(get_arabic_font_family(), self.editor_font_size))
+            target.tag_configure(
+                "note_spacing",
+                spacing1=max(0, self.editor_line_spacing // 2),
+                spacing2=0,
+                spacing3=self.editor_line_spacing,
+            )
+            target.tag_add("note_spacing", "1.0", "end")
+            if self.editor_direction == "rtl":
+                target.tag_configure("forced_direction", justify="right")
+                target.tag_add("forced_direction", "1.0", "end")
+            elif self.editor_direction == "ltr":
+                target.tag_configure("forced_direction", justify="left")
+                target.tag_add("forced_direction", "1.0", "end")
+            else:
+                target.tag_remove("forced_direction", "1.0", "end")
+        except Exception:
+            pass
+
+    def _restore_note_settings(self):
+        saved_filter = get_note_setting("last_category_filter", "All Notes")
+        values = ["All Notes"] + list(self.category_display_to_id.keys())
+        if saved_filter in values:
+            self.category_filter.set(saved_filter)
 
     def _add_category(self):
         dialog = GroupDialog(self, title="Create Note Category")
@@ -179,6 +301,7 @@ class NotesPage(ctk.CTkFrame):
             self.update_category_dropdowns()
             self.category_var.set(self._category_display(cat))
             self.category_filter.set(self._category_display(cat))
+            set_note_setting("last_category_filter", self._category_display(cat))
             self.refresh_list()
             self.toast_callback("Category created.")
         except Exception as e:
@@ -228,8 +351,10 @@ class NotesPage(ctk.CTkFrame):
             self.category_var.set(display[0])
         if self.category_filter.get() not in ["All Notes"] + display:
             self.category_filter.set("All Notes")
+            set_note_setting("last_category_filter", "All Notes")
 
     def refresh_list(self):
+        self._refresh_job = None
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
 
@@ -270,11 +395,15 @@ class NotesPage(ctk.CTkFrame):
         self.title_entry.insert(0, note.title)
         self.content_text.delete("1.0", "end")
         self.content_text.insert("1.0", note.content)
+        self._apply_editor_settings()
         self.category_var.set(self.category_id_to_display.get(note.category_id, self.category_var.get()))
         self.pin_btn.configure(
             text="Unpin" if note.pinned else "Pin",
             fg_color="#f59e0b" if note.pinned else ("gray75", "gray25"),
         )
+        if note.content.strip():
+            self._copy_text_to_clipboard(note.content)
+            self.toast_callback("Note copied to clipboard.")
 
     def _new_note(self):
         self.selected_note_id = None
@@ -282,6 +411,7 @@ class NotesPage(ctk.CTkFrame):
         self.content_text.delete("1.0", "end")
         if self.category_filter.get() != "All Notes":
             self.category_var.set(self.category_filter.get())
+        self._apply_editor_settings()
         self.pin_btn.configure(text="Pin", fg_color=("gray75", "gray25"))
         self.title_entry.focus_set()
 
@@ -337,9 +467,25 @@ class NotesPage(ctk.CTkFrame):
             self.toast_callback("Note is empty.", error=True)
             return
 
-        self.clipboard_clear()
-        self.clipboard_append(content)
+        self._copy_text_to_clipboard(content)
         self.toast_callback("Note copied to clipboard.")
+
+    def _copy_current_selection(self):
+        try:
+            selected = self.selection_get().strip()
+        except Exception:
+            return
+
+        if not selected or selected == self._last_copied_selection:
+            return
+
+        self._copy_text_to_clipboard(selected)
+        self._last_copied_selection = selected
+        self.toast_callback("Selection copied.")
+
+    def _copy_text_to_clipboard(self, text: str):
+        self.clipboard_clear()
+        self.clipboard_append(text)
 
     def _toggle_pin(self):
         if not self.selected_note_id:

@@ -3,60 +3,64 @@ import customtkinter as ctk
 
 class Toolbar(ctk.CTkFrame):
     def __init__(self, parent, callbacks: dict, **kwargs):
-        super().__init__(parent, height=50, corner_radius=8, **kwargs)
+        super().__init__(parent, height=84, corner_radius=10, **kwargs)
         self.callbacks = callbacks
 
+        self.grid_columnconfigure(0, weight=1)
+
+        actions_frame = ctk.CTkFrame(self, fg_color="transparent")
+        actions_frame.grid(row=0, column=0, sticky="w", padx=10, pady=10)
+
         actions = [
-            ("new", "+ New", "primary"),
-            ("run_background", "Hide to Tray", "special"),
-            ("import_xlsx", "Imp Excel", "secondary"),
-            ("export_xlsx", "Exp Excel", "secondary"),
-            ("template", "Excel Temp", "secondary"),
-            ("import_yaml", "Imp YAML", "secondary"),
-            ("export_yaml", "Exp YAML", "secondary"),
-            ("backup_json", "Backup All", "secondary"),
-            ("restore_json", "Restore All", "secondary"),
+            ("new", "+", "New", "#2563eb", "#1d4ed8"),
+            ("run_background", "H", "Hide", "#7c3aed", "#5b21b6"),
+            ("import_xlsx", "XI", "Imp Excel", "#16a34a", "#15803d"),
+            ("export_xlsx", "XO", "Exp Excel", "#059669", "#047857"),
+            ("template", "T", "Template", "#f59e0b", "#d97706"),
+            ("import_yaml", "YI", "Imp YAML", "#0ea5e9", "#0284c7"),
+            ("export_yaml", "YO", "Exp YAML", "#06b6d4", "#0891b2"),
+            ("backup_json", "B", "Backup", "#64748b", "#475569"),
+            ("restore_json", "R", "Restore", "#ef4444", "#dc2626"),
         ]
 
-        for act_id, label, style in actions:
-            if style == "primary":
-                fg = ("#2563eb", "#1d4ed8")
-                text_color = "white"
-            elif style == "special":
-                fg = ("#7c3aed", "#5b21b6")
-                text_color = "white"
-            else:
-                fg = ("gray75", "gray25")
-                text_color = ("black", "white")
-
-            btn = ctk.CTkButton(
-                self,
-                text=label,
-                width=95,
-                height=32,
-                fg_color=fg,
-                text_color=text_color,
-                font=ctk.CTkFont(size=11, weight="bold" if style in ["primary", "special"] else "normal"),
-                command=self.callbacks.get(act_id),
-            )
-            btn.pack(side="left", padx=4, pady=8)
+        for column, (act_id, icon, label, fg, hover) in enumerate(actions):
+            btn = self._make_action_button(actions_frame, icon, label, fg, hover, self.callbacks.get(act_id))
+            btn.grid(row=0, column=column, padx=4, pady=0)
 
         zoom_frame = ctk.CTkFrame(self, fg_color="transparent")
-        zoom_frame.pack(side="right", padx=10, pady=8)
+        zoom_frame.grid(row=0, column=1, sticky="e", padx=10, pady=10)
 
-        for label, callback_name, width in [
-            ("-", "zoom_out", 30),
-            ("100", "zoom_reset", 42),
-            ("+", "zoom_in", 30),
-        ]:
+        for column, (label, callback_name, width) in enumerate(
+            [
+                ("-", "zoom_out", 38),
+                ("100", "zoom_reset", 54),
+                ("+", "zoom_in", 38),
+            ]
+        ):
             btn = ctk.CTkButton(
                 zoom_frame,
                 text=label,
                 width=width,
-                height=32,
-                fg_color=("gray75", "gray30"),
+                height=44,
+                fg_color=("#e5e7eb", "#374151"),
+                hover_color=("#d1d5db", "#4b5563"),
                 text_color=("black", "white"),
-                font=ctk.CTkFont(size=14),
+                font=ctk.CTkFont(size=15, weight="bold"),
                 command=self.callbacks.get(callback_name),
             )
-            btn.pack(side="left", padx=2)
+            btn.grid(row=0, column=column, padx=3)
+
+    def _make_action_button(self, parent, icon: str, label: str, fg: str, hover: str, command):
+        button = ctk.CTkButton(
+            parent,
+            text=f"{icon}  {label}",
+            width=104,
+            height=44,
+            fg_color=fg,
+            hover_color=hover,
+            text_color="white",
+            font=ctk.CTkFont(size=12, weight="bold"),
+            corner_radius=8,
+            command=command,
+        )
+        return button

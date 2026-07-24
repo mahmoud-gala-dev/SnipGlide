@@ -11,9 +11,11 @@ class ClipboardMonitor(threading.Thread):
         self.daemon = True
         self.running = False
         self.last_text = ""
+        self._stop_event = threading.Event()
         
     def run(self):
         self.running = True
+        self._stop_event.clear()
         logger.info("Clipboard monitor service started.")
         while self.running:
             try:
@@ -25,7 +27,8 @@ class ClipboardMonitor(threading.Thread):
             except Exception as e:
                 logger.error(f"Clipboard monitor error: {e}")
                 
-            time.sleep(2.0)
+            self._stop_event.wait(3.0)
             
     def stop(self):
         self.running = False
+        self._stop_event.set()

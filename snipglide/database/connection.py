@@ -91,6 +91,15 @@ def initialize_database():
         """)
         
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_clipboard_history_copied ON clipboard_history (copied_at)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_clipboard_history_page ON clipboard_history (copied_at DESC, id DESC)")
+        cursor.execute("""
+            DELETE FROM clipboard_history
+            WHERE id NOT IN (
+                SELECT id FROM clipboard_history
+                ORDER BY copied_at DESC, id DESC
+                LIMIT 50
+            )
+        """)
         
         # Create usage history table for analytics
         cursor.execute("""
@@ -135,5 +144,13 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes (pinned)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes (modified_date)")
+
+        # Store lightweight UI preferences for the notes page in the database.
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS note_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
         
         conn.commit()
