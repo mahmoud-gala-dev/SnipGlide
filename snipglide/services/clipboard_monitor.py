@@ -1,6 +1,7 @@
 import threading
 import time
 from snipglide.database.clipboard_repo import add_clipboard_entry
+from snipglide.utils.helpers import get_clipboard_text
 from snipglide.utils.logger import logger
 
 class ClipboardMonitor(threading.Thread):
@@ -16,7 +17,7 @@ class ClipboardMonitor(threading.Thread):
         logger.info("Clipboard monitor service started.")
         while self.running:
             try:
-                text = self._get_clipboard_text()
+                text = get_clipboard_text()
                 if text and text != self.last_text and len(text) < 10000:
                     if len(text.strip()) > 1:
                         add_clipboard_entry(text)
@@ -24,18 +25,7 @@ class ClipboardMonitor(threading.Thread):
             except Exception as e:
                 logger.error(f"Clipboard monitor error: {e}")
                 
-            time.sleep(1.2)
+            time.sleep(2.0)
             
     def stop(self):
         self.running = False
-        
-    def _get_clipboard_text(self) -> str:
-        import tkinter as tk
-        try:
-            r = tk.Tk()
-            r.withdraw()
-            clip = r.clipboard_get()
-            r.destroy()
-            return str(clip)
-        except Exception:
-            return ""

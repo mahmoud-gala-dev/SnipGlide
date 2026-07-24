@@ -4,17 +4,7 @@ import re
 import socket
 import uuid
 import random
-import tkinter as tk
-
-def get_clipboard_text() -> str:
-    try:
-        r = tk.Tk()
-        r.withdraw()
-        clip = r.clipboard_get()
-        r.destroy()
-        return str(clip)
-    except Exception:
-        return ""
+from snipglide.utils.helpers import get_clipboard_text
 
 def parse_variables(text: str, usage_count: int = 0) -> str:
     now = datetime.now()

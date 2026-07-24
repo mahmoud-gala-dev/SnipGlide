@@ -41,6 +41,7 @@ class MainWindow(ctk.CTk):
         
         toolbar_callbacks = {
             "new": self._trigger_new_snippet,
+            "run_background": self._run_in_background,
             "import_xlsx": self._import_xlsx,
             "export_xlsx": self._export_xlsx,
             "template": self._download_template,
@@ -205,3 +206,8 @@ class MainWindow(ctk.CTk):
         self.sidebar.select_page("Snippets")
         self.pages["Snippets"]._new_snippet()
         self.pages["Snippets"].editor.set_text(text)
+
+    def _run_in_background(self):
+        """Minimize the window to system tray (run in background mode)."""
+        self.withdraw()
+        self.toast("Running in background - Press Ctrl+Alt+S to show")

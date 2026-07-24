@@ -17,7 +17,7 @@ class Sidebar(ctk.CTkFrame):
             ("Clipboard", "📋 Clipboard"),
             ("AIAssistant", "🤖 AI Assistant"),
             ("Settings", "⚙️ Settings"),
-            ("Marketplace", "🛍️ Marketplace")
+            ("Marketplace", "🛍 Marketplace")
         ]
         
         for page_id, label in pages:
@@ -28,11 +28,12 @@ class Sidebar(ctk.CTkFrame):
                 height=40,
                 fg_color="transparent",
                 text_color=("black", "white"),
-                hover_color=("gray85", "gray25"),
+                hover_color=("gray78", "gray30"),
                 font=ctk.CTkFont(size=13, weight="bold"),
-                command=lambda p=page_id: self.select_page(p)
+                command=lambda p=page_id: self.select_page(p),
+                corner_radius=8,
             )
-            btn.pack(fill="x", padx=5, pady=4)
+            btn.pack(fill="x", padx=(2, 15), pady=2)
             self.nav_buttons[page_id] = btn
             
         self.select_page("Dashboard")

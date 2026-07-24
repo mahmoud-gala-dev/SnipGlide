@@ -7,6 +7,7 @@ class Toolbar(ctk.CTkFrame):
         
         actions = [
             ("new", "➕ New", "primary"),
+            ("run_background", "🌙 Hide to Tray", "special"),
             ("import_xlsx", "📥 Imp Excel", "secondary"),
             ("export_xlsx", "📤 Exp Excel", "secondary"),
             ("template", "📁 Excel Temp", "secondary"),
@@ -17,8 +18,15 @@ class Toolbar(ctk.CTkFrame):
         ]
         
         for act_id, label, style in actions:
-            fg = ("#2563eb", "#1d4ed8") if style == "primary" else ("gray75", "gray25")
-            text_color = "white" if style == "primary" else ("black", "white")
+            if style == "primary":
+                fg = ("#2563eb", "#1d4ed8")
+                text_color = "white"
+            elif style == "special":
+                fg = ("#7c3aed", "#5b21b6")
+                text_color = "white"
+            else:
+                fg = ("gray75", "gray25")
+                text_color = ("black", "white")
             
             btn = ctk.CTkButton(
                 self,
@@ -27,7 +35,7 @@ class Toolbar(ctk.CTkFrame):
                 height=32,
                 fg_color=fg,
                 text_color=text_color,
-                font=ctk.CTkFont(size=11, weight="bold" if style == "primary" else "normal"),
+                font=ctk.CTkFont(size=11, weight="bold" if style in ["primary", "special"] else "normal"),
                 command=self.callbacks.get(act_id)
             )
             btn.pack(side="left", padx=4, pady=8)

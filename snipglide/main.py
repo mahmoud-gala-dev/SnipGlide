@@ -27,6 +27,9 @@ class AppCoordinator:
             
         threading.Thread(target=load_font_async, daemon=True).start()
         
+        from snipglide.services.auto_backup import start_auto_backup_service
+        start_auto_backup_service()
+        
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
             form_prompt_callback=self.show_form_prompt
@@ -65,7 +68,8 @@ class AppCoordinator:
         
         from pynput.keyboard import GlobalHotKeys
         self.hotkeys = GlobalHotKeys({
-            '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search)
+            '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
+            '<ctrl>+<alt>+s': lambda: self.window.after(0, self.toggle_window_visibility),
         })
         self.hotkeys.start()
         
@@ -120,6 +124,14 @@ class AppCoordinator:
             self.window.after(0, self.window.deiconify)
             self.window.after(20, self.window.lift)
             self.window.after(30, self.window.focus_force)
+
+    def toggle_window_visibility(self):
+        """Toggle between showing and hiding the main window (Ctrl+Alt+S)."""
+        if self.window:
+            if self.window.state() == "withdrawn":
+                self.show_window()
+            else:
+                self.hide_window()
             
     def _create_tray_image(self):
         image = Image.new("RGB", (64, 64), "white")

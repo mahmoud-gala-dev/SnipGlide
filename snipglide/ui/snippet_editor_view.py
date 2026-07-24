@@ -39,35 +39,39 @@ class SnippetEditorView(ctk.CTkFrame):
         self.scroll_list = ctk.CTkScrollableFrame(self.left_frame, label_text="Snippet Triggers")
         self.scroll_list.grid(row=2, column=0, sticky="nsew", padx=15, pady=(5, 15))
         
-        # Right Panel (Editor)
-        self.right_frame = ctk.CTkFrame(self)
-        self.right_frame.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
-        self.right_frame.grid_columnconfigure(0, weight=1)
-        self.right_frame.grid_rowconfigure(6, weight=1)
-        
+        # Right Panel (Editor) — wrapped in scrollable frame
+        self.right_outer = ctk.CTkFrame(self)
+        self.right_outer.grid(row=0, column=1, sticky="nsew", padx=(5, 10), pady=10)
+        self.right_outer.grid_columnconfigure(0, weight=1)
+        self.right_outer.grid_rowconfigure(0, weight=1)
+
+        self.right_scroll = ctk.CTkScrollableFrame(self.right_outer, fg_color="transparent")
+        self.right_scroll.pack(fill="both", expand=True)
+        self.right_frame = self.right_scroll
+
         # UI Fields inside editor
-        ctk.CTkLabel(self.right_frame, text="Snippet Editor", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, sticky="w", padx=20, pady=(15, 5))
-        
+        ctk.CTkLabel(self.right_frame, text="Snippet Editor", font=ctk.CTkFont(size=18, weight="bold")).pack(anchor="w", padx=20, pady=(15, 5))
+
         # Row 1: Shortcut & Favorite
         r1_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        r1_frame.grid(row=1, column=0, sticky="ew", padx=20, pady=4)
+        r1_frame.pack(fill="x", padx=20, pady=4)
         r1_frame.grid_columnconfigure(0, weight=1)
-        
-        self.shortcut_entry = ctk.CTkEntry(r1_frame, placeholder_text="Trigger (e.g. #sig, $date, !@#)")
+
+        self.shortcut_entry = ctk.CTkEntry(r1_frame, placeholder_text="Trigger (e.g. #sig, $date, !@#)", font=ctk.CTkFont(size=13))
         self.shortcut_entry.grid(row=0, column=0, sticky="ew", padx=(0, 10))
         self.favorite_var = ctk.BooleanVar(value=False)
         self.favorite_cb = ctk.CTkCheckBox(r1_frame, text="⭐ Fav", variable=self.favorite_var, width=60)
         self.favorite_cb.grid(row=0, column=1, sticky="e")
-        
+
         # Row 2: Description
-        self.desc_entry = ctk.CTkEntry(self.right_frame, placeholder_text="Description / Notes")
-        self.desc_entry.grid(row=2, column=0, sticky="ew", padx=20, pady=4)
-        
+        self.desc_entry = ctk.CTkEntry(self.right_frame, placeholder_text="Description / Notes", font=ctk.CTkFont(size=13))
+        self.desc_entry.pack(fill="x", padx=20, pady=4)
+
         # Row 3: Group & Language
         r3_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        r3_frame.grid(row=3, column=0, sticky="ew", padx=20, pady=4)
+        r3_frame.pack(fill="x", padx=20, pady=4)
         r3_frame.grid_columnconfigure((0, 1), weight=1)
-        
+
         g_sub = ctk.CTkFrame(r3_frame, fg_color="transparent")
         g_sub.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         g_sub.grid_columnconfigure(0, weight=1)
@@ -76,32 +80,32 @@ class SnippetEditorView(ctk.CTkFrame):
         self.group_menu.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         self.add_group_btn = ctk.CTkButton(g_sub, text="+", width=32, command=self._add_new_group)
         self.add_group_btn.grid(row=0, column=1, sticky="e")
-        
+
         self.lang_var = ctk.StringVar(value="Plain Text")
         self.lang_menu = ctk.CTkOptionMenu(r3_frame, variable=self.lang_var, values=["Plain Text", "Python", "JavaScript", "HTML", "CSS", "SQL", "JSON", "XML", "YAML", "Markdown", "C#", "Java", "C++"], command=lambda _: self._on_lang_change())
         self.lang_menu.grid(row=0, column=1, sticky="ew", padx=(5, 0))
-        
+
         # Row 4: Regex, App & Window Filter
         r4_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        r4_frame.grid(row=4, column=0, sticky="ew", padx=20, pady=4)
+        r4_frame.pack(fill="x", padx=20, pady=4)
         r4_frame.grid_columnconfigure((0, 1, 2), weight=1)
-        
+
         self.regex_var = ctk.BooleanVar(value=False)
         self.regex_cb = ctk.CTkCheckBox(r4_frame, text="Regex", variable=self.regex_var)
         self.regex_cb.grid(row=0, column=0, sticky="w")
-        
-        self.app_filter_entry = ctk.CTkEntry(r4_frame, placeholder_text="App Filter (e.g. notepad.exe)", height=28)
+
+        self.app_filter_entry = ctk.CTkEntry(r4_frame, placeholder_text="App Filter (e.g. notepad.exe)", height=30, font=ctk.CTkFont(size=12))
         self.app_filter_entry.grid(row=0, column=1, sticky="ew", padx=2)
-        self.win_filter_entry = ctk.CTkEntry(r4_frame, placeholder_text="Window Title Filter", height=28)
+        self.win_filter_entry = ctk.CTkEntry(r4_frame, placeholder_text="Window Title Filter", height=30, font=ctk.CTkFont(size=12))
         self.win_filter_entry.grid(row=0, column=2, sticky="ew", padx=(2, 0))
-        
+
         # Row 5: Code Editor
-        self.editor = CodeEditor(self.right_frame)
-        self.editor.grid(row=5, column=0, sticky="nsew", padx=20, pady=8)
+        self.editor = CodeEditor(self.right_frame, height=300)
+        self.editor.pack(fill="both", expand=True, padx=20, pady=8)
         
         # Row 6: AI Toolbar
         ai_frame = ctk.CTkFrame(self.right_frame, height=35, fg_color="transparent")
-        ai_frame.grid(row=6, column=0, sticky="ew", padx=20, pady=4)
+        ai_frame.pack(fill="x", padx=20, pady=4)
         ctk.CTkLabel(ai_frame, text="AI Assist:", font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=5)
         
         ai_actions = [
@@ -114,19 +118,29 @@ class SnippetEditorView(ctk.CTkFrame):
             btn = ctk.CTkButton(ai_frame, text=label, width=80, height=24, font=ctk.CTkFont(size=11), fg_color=("gray80", "gray20"), text_color=("black", "white"), command=lambda a=aid: self._run_ai_assist(a))
             btn.pack(side="left", padx=3)
             
+        # Row 6.5: Live Variable Preview
+        preview_frame = ctk.CTkFrame(self.right_frame, fg_color=("gray92", "gray16"))
+        preview_frame.pack(fill="x", padx=20, pady=4)
+        ctk.CTkLabel(preview_frame, text="👁️ Live Preview:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 1))
+        self.preview_label = ctk.CTkLabel(preview_frame, text="...", anchor="w", justify="left", font=ctk.CTkFont(size=11), text_color=("gray30", "gray70"))
+        self.preview_label.pack(fill="x", padx=10, pady=(0, 4))
+        
         # Row 7: Actions
         btn_frame = ctk.CTkFrame(self.right_frame, fg_color="transparent")
-        btn_frame.grid(row=7, column=0, sticky="ew", padx=20, pady=(8, 15))
-        btn_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        btn_frame.pack(fill="x", padx=20, pady=(8, 15))
+        btn_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
         
-        self.save_btn = ctk.CTkButton(btn_frame, text="Save Snippet", command=self._save_snippet)
-        self.save_btn.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        self.save_btn = ctk.CTkButton(btn_frame, text="💾 Save (Ctrl+S)", command=self._save_snippet)
+        self.save_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3))
         
-        self.new_btn = ctk.CTkButton(btn_frame, text="New", fg_color=("gray70", "gray30"), command=self._new_snippet)
-        self.new_btn.grid(row=0, column=1, sticky="ew", padx=5)
+        self.duplicate_btn = ctk.CTkButton(btn_frame, text="📋 Duplicate", fg_color=("gray75", "gray35"), text_color=("black", "white"), command=self._duplicate_snippet)
+        self.duplicate_btn.grid(row=0, column=1, sticky="ew", padx=3)
+
+        self.new_btn = ctk.CTkButton(btn_frame, text="✨ New (Ctrl+N)", fg_color=("gray70", "gray30"), command=self._new_snippet)
+        self.new_btn.grid(row=0, column=2, sticky="ew", padx=3)
         
-        self.delete_btn = ctk.CTkButton(btn_frame, text="Delete", fg_color="#dc2626", hover_color="#b91c1c", command=self._delete_snippet)
-        self.delete_btn.grid(row=0, column=2, sticky="ew", padx=(5, 0))
+        self.delete_btn = ctk.CTkButton(btn_frame, text="🗑️ Delete (Ctrl+D)", fg_color="#dc2626", hover_color="#b91c1c", command=self._delete_snippet)
+        self.delete_btn.grid(row=0, column=3, sticky="ew", padx=(3, 0))
         
         # Load initial values
         self.update_group_dropdowns()
@@ -137,6 +151,44 @@ class SnippetEditorView(ctk.CTkFrame):
         for attr in [self.search_entry, self.shortcut_entry, self.desc_entry, self.app_filter_entry, self.win_filter_entry]:
             create_context_menu(attr)
             apply_rtl_support(attr)
+
+        # Bind live preview & keyboard shortcuts safely
+        self.editor.textbox.bind("<KeyRelease>", lambda _e: self._update_live_preview(), add="+")
+        
+        def bind_shortcuts():
+            try:
+                top = self.winfo_toplevel()
+                top.bind("<Control-s>", lambda _e: self._save_snippet())
+                top.bind("<Control-n>", lambda _e: self._new_snippet())
+                top.bind("<Control-d>", lambda _e: self._delete_snippet())
+            except Exception:
+                pass
+
+        self.after(100, bind_shortcuts)
+
+    def _update_live_preview(self):
+        try:
+            from snipglide.engine.parser import parse_variables
+            raw = self.editor.get_text()
+            if not raw.strip():
+                self.preview_label.configure(text="(empty)")
+                return
+            parsed = parse_variables(raw)
+            if len(parsed) > 120:
+                parsed = parsed[:120] + "..."
+            self.preview_label.configure(text=parsed)
+        except Exception:
+            pass
+
+    def _duplicate_snippet(self):
+        if not getattr(self, "selected_snippet_id", None):
+            self.toast_callback("Select a snippet to duplicate.", error=True)
+            return
+        orig_shortcut = self.shortcut_entry.get().strip()
+        self.shortcut_entry.delete(0, "end")
+        self.shortcut_entry.insert(0, f"{orig_shortcut}_copy")
+        self.selected_snippet_id = None
+        self.toast_callback("Snippet duplicated as draft. Click Save to store.")
         
     def _on_lang_change(self):
         self.editor.highlight_code(self.lang_var.get())
@@ -221,9 +273,12 @@ class SnippetEditorView(ctk.CTkFrame):
             if clean_filter != "All Groups" and s_group != clean_filter:
                 continue
                 
-            text = f"{s.shortcut} {s.description}".lower()
+            text = f"{s.shortcut} {s.description} {s.replacement}".lower()
             if not query or query in text:
                 visible.append(s)
+
+        # Pin favorites to top
+        visible.sort(key=lambda s: (not s.favorite, s.shortcut.lower()))
                 
         if not visible:
             ctk.CTkLabel(self.scroll_list, text="No snippets match.", text_color="gray").pack(pady=20)
@@ -231,6 +286,7 @@ class SnippetEditorView(ctk.CTkFrame):
             
         for i, s in enumerate(visible):
             icon = groups_icons.get(s.group_id, "📁")
+            fav = "⭐ " if s.favorite else ""
             preview = s.replacement.replace("\n", " ")
             if len(preview) > 30:
                 preview = preview[:30] + "..."
@@ -238,7 +294,7 @@ class SnippetEditorView(ctk.CTkFrame):
             # Keep index pointer
             btn = ctk.CTkButton(
                 self.scroll_list,
-                text=f"{icon} {s.shortcut}\n{preview}",
+                text=f"{fav}{icon} {s.shortcut}\n{preview}",
                 anchor="w",
                 height=55,
                 fg_color=("gray88", "gray18"),

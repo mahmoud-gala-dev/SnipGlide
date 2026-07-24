@@ -19,6 +19,22 @@ class ExpansionEngine:
         self.running = False
         self.suspended = False
         self._lock = threading.RLock()
+        
+        # Cache with longer TTL to reduce database queries
+        self._last_snippets_fetch = 0
+        self._last_corrections_fetch = 0
+        self._cached_snippets = []
+        self._cached_corrections = {}
+        self._cache_ttl = 5.0  # Cache TTL in seconds (increased for better performance)
+        
+        # Throttle window info checks to reduce system calls
+        self._last_window_check = 0
+        self._window_check_interval = 0.5  # Check window info every 500ms max
+        self._cached_window_info = ("", "")
+        
+        # Low-power mode when idle
+        self._last_key_time = 0
+        self._idle_threshold = 30.0  # Consider idle after 30 seconds
 
     def start(self):
         if self.listener is not None:
@@ -27,7 +43,7 @@ class ExpansionEngine:
         self.listener = keyboard.Listener(on_press=self._on_press)
         self.listener.daemon = True
         self.listener.start()
-        logger.info("Expansion engine started.")
+        logger.info("Expansion engine started (optimized mode).")
 
     def stop(self):
         self.running = False
@@ -39,11 +55,17 @@ class ExpansionEngine:
     def set_suspended(self, value: bool):
         self.suspended = value
         self.buffer = ""
+        
+    def _is_idle_mode(self) -> bool:
+        """Check if we're in idle mode (reduced processing)."""
+        return (time.time() - self._last_key_time) > self._idle_threshold
 
     def _on_press(self, key):
         if not self.running or self.suspended:
             return
             
+        self._last_key_time = time.time()
+        
         settings = self.settings_provider()
         if not settings.get("enabled", True):
             return
@@ -77,7 +99,8 @@ class ExpansionEngine:
             max_len = int(settings.get("max_buffer", 250))
             self.buffer = self.buffer[-max_len:]
 
-            win_title, win_proc = get_active_window_info()
+            # Use cached window info to reduce system calls
+            win_title, win_proc = self._get_cached_window_info()
             
             blacklist = settings.get("blacklist", "")
             if blacklist:
@@ -87,7 +110,11 @@ class ExpansionEngine:
                         self.buffer = ""
                         return
 
-            snippets = get_all_snippets()
+            # Skip snippet matching if in idle mode and buffer is short
+            if self._is_idle_mode() and len(self.buffer) < 3:
+                return
+
+            snippets = self._get_cached_snippets()
             
             matched_snippet = None
             matched_trigger = None
@@ -125,6 +152,14 @@ class ExpansionEngine:
         except Exception as e:
             logger.error(f"Listener error: {e}")
             self.buffer = ""
+            
+    def _get_cached_window_info(self):
+        """Get window info with caching to reduce system calls."""
+        now = time.time()
+        if now - self._last_window_check > self._window_check_interval:
+            self._cached_window_info = get_active_window_info()
+            self._last_window_check = now
+        return self._cached_window_info
 
     def _expand(self, trigger: str, snippet):
         with self._lock:
@@ -145,7 +180,7 @@ class ExpansionEngine:
                 for _ in range(len(trigger)):
                     self.controller.press(keyboard.Key.backspace)
                     self.controller.release(keyboard.Key.backspace)
-                    time.sleep(0.002)
+                    time.sleep(0.001)  # Reduced delay for faster deletion
 
                 self.controller.type(replacement)
                 self.buffer = ""
@@ -155,14 +190,36 @@ class ExpansionEngine:
             except Exception as e:
                 logger.error(f"Expansion failed: {e}")
             finally:
-                time.sleep(0.03)
+                time.sleep(0.02)  # Reduced delay
                 self.suspended = False
 
+    def invalidate_cache(self):
+        self._last_snippets_fetch = 0
+        self._last_corrections_fetch = 0
+
+    def _get_cached_snippets(self):
+        now = time.time()
+        if now - self._last_snippets_fetch > self._cache_ttl:
+            try:
+                self._cached_snippets = get_all_snippets()
+            except Exception as e:
+                logger.error(f"Failed to fetch snippets: {e}")
+            self._last_snippets_fetch = now
+        return self._cached_snippets
+
+    def _get_cached_corrections(self):
+        now = time.time()
+        if now - self._last_corrections_fetch > self._cache_ttl:
+            try:
+                self._cached_corrections = get_all_corrections()
+            except Exception as e:
+                logger.error(f"Failed to fetch auto-corrections: {e}")
+            self._last_corrections_fetch = now
+        return self._cached_corrections
+
     def _check_autocorrect(self, trigger_key):
-        try:
-            corrections = get_all_corrections()
-        except Exception as e:
-            logger.error(f"Failed to fetch auto-corrections: {e}")
+        corrections = self._get_cached_corrections()
+        if not corrections:
             return
             
         for typo, correction in corrections.items():
@@ -179,7 +236,7 @@ class ExpansionEngine:
                 for _ in range(len(typo)):
                     self.controller.press(keyboard.Key.backspace)
                     self.controller.release(keyboard.Key.backspace)
-                    time.sleep(0.002)
+                    time.sleep(0.001)  # Reduced delay
                 self.controller.type(correction)
                 self._play_expansion_sound()
             except Exception as e:

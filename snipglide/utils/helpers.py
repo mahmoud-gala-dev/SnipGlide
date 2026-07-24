@@ -6,13 +6,73 @@ def resource_path(relative: str) -> Path:
         return Path(sys._MEIPASS) / relative
     return Path(__file__).resolve().parent.parent.parent / relative
 
+def get_clipboard_text() -> str:
+    """Fast, thread-safe, native Windows clipboard text reader without GUI overhead."""
+    import ctypes
+    from ctypes import wintypes
+    
+    CF_UNICODETEXT = 13
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+    
+    user32.OpenClipboard.argtypes = [wintypes.HWND]
+    user32.OpenClipboard.restype = wintypes.BOOL
+    user32.CloseClipboard.argtypes = []
+    user32.CloseClipboard.restype = wintypes.BOOL
+    user32.GetClipboardData.argtypes = [wintypes.UINT]
+    user32.GetClipboardData.restype = wintypes.HANDLE
+    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalLock.restype = wintypes.LPVOID
+    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalUnlock.restype = wintypes.BOOL
+
+    try:
+        if not user32.OpenClipboard(None):
+            return ""
+        handle = user32.GetClipboardData(CF_UNICODETEXT)
+        if not handle:
+            user32.CloseClipboard()
+            return ""
+        pointer = kernel32.GlobalLock(handle)
+        if not pointer:
+            user32.CloseClipboard()
+            return ""
+        try:
+            return ctypes.string_at(pointer).decode("utf-16-le").split("\x00", 1)[0]
+        finally:
+            kernel32.GlobalUnlock(handle)
+            user32.CloseClipboard()
+    except Exception:
+        return ""
+
+def safe_clear_frame(frame):
+    """
+    Safely destroy all children of a CTkScrollableFrame/CTkFrame.
+    Unbinds <Configure> from every descendant before destroying to prevent
+    CustomTkinter's '_update_dimensions_event' firing on dead widget references.
+    """
+    def _unbind_and_destroy(widget):
+        try:
+            for child in widget.winfo_children():
+                _unbind_and_destroy(child)
+            try:
+                widget.unbind("<Configure>")
+            except Exception:
+                pass
+            widget.destroy()
+        except Exception:
+            pass
+
+    for child in list(frame.winfo_children()):
+        _unbind_and_destroy(child)
+
 def create_context_menu(widget, has_ai=False, ai_callback=None):
     import tkinter as tk
     
     # Check if widget has an inner textbox or entry, and target it for native compatibility
     target = getattr(widget, "_textbox", getattr(widget, "_entry", widget))
     
-    menu = tk.Menu(target, tearoff=0)
+    menu = tk.Menu(target, tearoff=0, font=("Segoe UI", 13))
     
     def cut():
         target.event_generate("<<Cut>>")
@@ -43,28 +103,39 @@ def create_context_menu(widget, has_ai=False, ai_callback=None):
 
 def apply_rtl_support(widget):
     import re
+    import tkinter as tk
     target = getattr(widget, "_textbox", getattr(widget, "_entry", widget))
     
     from snipglide.core.config import get_arabic_font_family
-    font_family = get_arabic_font_family()
     
-    def on_key_release(event):
+    if isinstance(target, tk.Text):
+        target.tag_configure("rtl_align", justify="right")
+        target.tag_configure("ltr_align", justify="left")
+    
+    def on_key_release(event=None):
         try:
-            if hasattr(target, "get"):
-                if hasattr(target, "index"):
-                    text = target.get()
+            if isinstance(target, tk.Entry):
+                text = target.get()
+                has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
+                align = "right" if has_arabic else "left"
+                current_family = get_arabic_font_family()
+                if has_arabic:
+                    target.configure(justify=align, font=(current_family, 13))
                 else:
-                    text = target.get("1.0", "end-1c")
-            else:
-                return
-                
-            has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
-            align = "right" if has_arabic else "left"
-            if has_arabic:
-                target.configure(justify=align, font=(font_family, 11))
-            else:
-                target.configure(justify=align, font=("Consolas", 11) if not hasattr(target, "index") else ("Segoe UI", 11))
-        except Exception:
+                    target.configure(justify=align, font=("Segoe UI", 13))
+            elif isinstance(target, tk.Text):
+                text = target.get("1.0", "end-1c")
+                has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
+                current_family = get_arabic_font_family()
+                if has_arabic:
+                    target.configure(font=(current_family, 13))
+                    target.tag_remove("ltr_align", "1.0", "end")
+                    target.tag_add("rtl_align", "1.0", "end")
+                else:
+                    target.configure(font=("Consolas", 13))
+                    target.tag_remove("rtl_align", "1.0", "end")
+                    target.tag_add("ltr_align", "1.0", "end")
+        except Exception as e:
             pass
             
     target.bind("<KeyRelease>", on_key_release, add="+")
