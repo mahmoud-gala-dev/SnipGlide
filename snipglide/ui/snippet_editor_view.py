@@ -17,6 +17,7 @@ class SnippetEditorView(ctk.CTkFrame):
         self.selected_index = None
         self.snippets_list = []
         self._refresh_job = None
+        self._groups_cache = []
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
@@ -246,8 +247,8 @@ class SnippetEditorView(ctk.CTkFrame):
                 self.toast_callback(f"Failed to create group: {e}", error=True)
                 
     def update_group_dropdowns(self):
-        groups = get_all_groups()
-        display_groups = [f"{g.icon} {g.name}" for g in groups]
+        self._groups_cache = get_all_groups()
+        display_groups = [f"{g.icon} {g.name}" for g in self._groups_cache]
         self.group_menu.configure(values=display_groups)
         self.group_filter.configure(values=["All Groups"] + display_groups)
 
@@ -274,8 +275,9 @@ class SnippetEditorView(ctk.CTkFrame):
         self.snippets_list = []
         
         # Resolve group names for mapping
-        groups_map = {g.id: g.name for g in get_all_groups()}
-        groups_icons = {g.id: g.icon for g in get_all_groups()}
+        groups = self._groups_cache or get_all_groups()
+        groups_map = {g.id: g.name for g in groups}
+        groups_icons = {g.id: g.icon for g in groups}
         
         visible = []
         for s in snippets:
@@ -294,7 +296,9 @@ class SnippetEditorView(ctk.CTkFrame):
             ctk.CTkLabel(self.scroll_list, text="No snippets match.", text_color="gray").pack(pady=20)
             return
             
-        for i, s in enumerate(visible):
+        max_visible = 150
+        hidden_count = max(0, len(visible) - max_visible)
+        for i, s in enumerate(visible[:max_visible]):
             icon = groups_icons.get(s.group_id, "📁")
             fav = "⭐ " if s.favorite else ""
             preview = s.replacement.replace("\n", " ")
@@ -313,6 +317,13 @@ class SnippetEditorView(ctk.CTkFrame):
                 command=lambda snippet=s: self._select_snippet(snippet)
             )
             btn.pack(fill="x", pady=4)
+
+        if hidden_count:
+            ctk.CTkLabel(
+                self.scroll_list,
+                text=f"{hidden_count} more results hidden. Refine search to narrow the list.",
+                text_color="gray",
+            ).pack(pady=10)
             
     def _select_snippet(self, s: Snippet):
         self.selected_snippet_id = s.id
@@ -330,7 +341,7 @@ class SnippetEditorView(ctk.CTkFrame):
         self.hotkey_entry.insert(0, s.hotkey)
         
         # Set Group dropdown
-        groups = get_all_groups()
+        groups = self._groups_cache or get_all_groups()
         groups_map = {g.id: (g.name, g.icon) for g in groups}
         g_name, g_icon = groups_map.get(s.group_id, ("General", "📁"))
         self.group_var.set(f"{g_icon} {g_name}")
@@ -370,7 +381,7 @@ class SnippetEditorView(ctk.CTkFrame):
         g_parts = g_selection.split(" ", 1)
         g_name = g_parts[1] if len(g_parts) > 1 else g_selection
         
-        groups = {g.name: g.id for g in get_all_groups()}
+        groups = {g.name: g.id for g in (self._groups_cache or get_all_groups())}
         g_id = groups.get(g_name, 1)
         
         snippet = Snippet(

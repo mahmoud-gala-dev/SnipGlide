@@ -1,8 +1,6 @@
 import customtkinter as ctk
 
-from snipglide.database.clipboard_repo import get_clipboard_history
-from snipglide.database.note_repo import get_all_notes
-from snipglide.database.snippet_repo import get_all_snippets
+from snipglide.database.search_repo import search_all
 
 
 class SearchPage(ctk.CTkFrame):
@@ -11,6 +9,8 @@ class SearchPage(ctk.CTkFrame):
         self.toast_callback = toast_callback
         self.navigate_to_snippet_callback = navigate_to_snippet_callback
         self._search_job = None
+        self._last_query = None
+        self._last_results = []
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(2, weight=1)
@@ -43,27 +43,19 @@ class SearchPage(ctk.CTkFrame):
             self._show_empty("Type to search.")
             return
 
-        results = []
-        for snippet in get_all_snippets():
-            haystack = f"{snippet.shortcut} {snippet.description} {snippet.replacement}".lower()
-            if query in haystack:
-                results.append(("Snippet", snippet.shortcut, snippet.replacement, lambda s=snippet: self._copy_text(s.replacement)))
-
-        for note in get_all_notes():
-            haystack = f"{note.title} {note.content}".lower()
-            if query in haystack:
-                results.append(("Note", note.title, note.content, lambda n=note: self._copy_text(n.content)))
-
-        for item in get_clipboard_history(limit=20, offset=0):
-            if query in item.lower():
-                results.append(("Clipboard", "Clipboard entry", item, lambda text=item: self._copy_text(text)))
+        if query == self._last_query:
+            results = self._last_results
+        else:
+            results = search_all(query, limit=40)
+            self._last_query = query
+            self._last_results = results
 
         if not results:
             self._show_empty("No results found.")
             return
 
-        for kind, title, body, action in results[:40]:
-            self._create_result_row(kind, title, body, action)
+        for item in results:
+            self._create_result_row(item["kind"], item["title"], item["body"], lambda text=item["body"]: self._copy_text(text))
 
     def _create_result_row(self, kind: str, title: str, body: str, action):
         row = ctk.CTkFrame(self.results_frame, fg_color=("gray90", "gray15"))

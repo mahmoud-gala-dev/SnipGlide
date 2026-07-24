@@ -238,7 +238,7 @@ class NotesPage(ctk.CTkFrame):
         if not title or not content.strip():
             self.save_state_label.configure(text="Draft", text_color="gray")
             return
-        self._save_note(show_toast=False)
+        self._save_note(show_toast=False, refresh_list=False)
 
     def _category_display(self, category: NoteCategory) -> str:
         return f"{category.icon} {category.name}".strip()
@@ -396,7 +396,9 @@ class NotesPage(ctk.CTkFrame):
             ctk.CTkLabel(self.scroll_list, text="No notes found.", text_color="gray").pack(pady=20)
             return
 
-        for note in notes:
+        max_visible = 150
+        hidden_count = max(0, len(notes) - max_visible)
+        for note in notes[:max_visible]:
             cat_display = self.category_id_to_display.get(note.category_id, "Uncategorized")
             pin_prefix = "[Pinned] " if note.pinned else ""
             preview = note.content.replace("\n", " ").strip()[:60]
@@ -414,6 +416,13 @@ class NotesPage(ctk.CTkFrame):
                 command=lambda n=note: self._select_note(n),
             )
             btn.pack(fill="x", pady=4)
+
+        if hidden_count:
+            ctk.CTkLabel(
+                self.scroll_list,
+                text=f"{hidden_count} more notes hidden. Refine search to narrow the list.",
+                text_color="gray",
+            ).pack(pady=10)
 
     def _select_note(self, note: Note):
         if self._autosave_job:
@@ -451,7 +460,7 @@ class NotesPage(ctk.CTkFrame):
         self.save_state_label.configure(text="Draft", text_color="gray")
         self.title_entry.focus_set()
 
-    def _save_note(self, show_toast: bool = True):
+    def _save_note(self, show_toast: bool = True, refresh_list: bool = True):
         title = self.title_entry.get().strip()
         content = self.content_text.get("1.0", "end-1c")
 
@@ -473,6 +482,7 @@ class NotesPage(ctk.CTkFrame):
         )
 
         try:
+            was_new = self.selected_note_id is None
             if self.selected_note_id is None:
                 self.selected_note_id = add_note(note)
                 if show_toast:
@@ -484,7 +494,8 @@ class NotesPage(ctk.CTkFrame):
 
             self._last_saved_state = (self.selected_note_id, title, content, selected_category)
             self.save_state_label.configure(text="Saved", text_color="#16a34a")
-            self.refresh_list()
+            if refresh_list or was_new:
+                self.refresh_list()
         except Exception as e:
             self.save_state_label.configure(text="Save failed", text_color="#dc2626")
             if show_toast:

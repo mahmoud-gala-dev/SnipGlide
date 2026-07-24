@@ -58,6 +58,7 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_shortcut ON snippets (shortcut)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_group_id ON snippets (group_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_favorite ON snippets (favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_modified ON snippets (modified_date)")
         
         # Create autocorrect table
         cursor.execute("""
@@ -147,6 +148,7 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes (pinned)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes (modified_date)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_title ON notes (title)")
 
         # Store lightweight UI preferences for the notes page in the database.
         cursor.execute("""

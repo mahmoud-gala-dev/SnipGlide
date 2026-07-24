@@ -25,6 +25,10 @@ class ExpansionEngine:
         self._last_corrections_fetch = 0
         self._cached_snippets = []
         self._cached_corrections = {}
+        self._min_plain_trigger_len = 1
+        self._has_regex_snippets = False
+        self._cached_blacklist_raw = None
+        self._cached_blacklist = []
         self._cache_ttl = 5.0  # Cache TTL in seconds (increased for better performance)
         
         # Throttle window info checks to reduce system calls
@@ -70,12 +74,6 @@ class ExpansionEngine:
         if not settings.get("enabled", True):
             return
 
-        win_title, win_proc = self._get_cached_window_info()
-        lower_title = win_title.lower()
-        if "password" in lower_title or "login" in lower_title or "sign in" in lower_title:
-            self.buffer = ""
-            return
-
         try:
             if key == keyboard.Key.backspace:
                 self.buffer = self.buffer[:-1]
@@ -89,7 +87,8 @@ class ExpansionEngine:
                 keyboard.Key.delete,
             }:
                 if key in {keyboard.Key.space, keyboard.Key.enter, keyboard.Key.tab}:
-                    self._check_autocorrect(key)
+                    if not self._is_sensitive_window():
+                        self._check_autocorrect(key)
                 self.buffer = ""
                 return
 
@@ -101,16 +100,24 @@ class ExpansionEngine:
             max_len = int(settings.get("max_buffer", 250))
             self.buffer = self.buffer[-max_len:]
 
+            snippets = self._get_cached_snippets()
+            if not snippets:
+                return
+            if not self._has_regex_snippets and len(self.buffer) < self._min_plain_trigger_len:
+                return
+
+            win_title, win_proc = self._get_cached_window_info()
+            if self._is_sensitive_window(win_title):
+                self.buffer = ""
+                return
+
             blacklist = settings.get("blacklist", "")
             if blacklist:
-                blocked_procs = [p.strip().lower() for p in blacklist.split(",") if p.strip()]
-                for bp in blocked_procs:
+                for bp in self._get_cached_blacklist(blacklist):
                     if bp in win_proc.lower():
                         self.buffer = ""
                         return
 
-            snippets = self._get_cached_snippets()
-            
             matched_snippet = None
             matched_trigger = None
 
@@ -156,6 +163,12 @@ class ExpansionEngine:
             self._last_window_check = now
         return self._cached_window_info
 
+    def _is_sensitive_window(self, win_title: str = None) -> bool:
+        if win_title is None:
+            win_title, _ = self._get_cached_window_info()
+        lower_title = win_title.lower()
+        return "password" in lower_title or "login" in lower_title or "sign in" in lower_title
+
     def _expand(self, trigger: str, snippet):
         with self._lock:
             self.suspended = True
@@ -197,6 +210,9 @@ class ExpansionEngine:
         if now - self._last_snippets_fetch > self._cache_ttl:
             try:
                 self._cached_snippets = sorted(get_all_snippets(), key=lambda x: len(x.shortcut), reverse=True)
+                plain_lengths = [len(s.shortcut) for s in self._cached_snippets if not s.regex_enabled and s.shortcut]
+                self._min_plain_trigger_len = min(plain_lengths) if plain_lengths else 1
+                self._has_regex_snippets = any(s.regex_enabled for s in self._cached_snippets)
             except Exception as e:
                 logger.error(f"Failed to fetch snippets: {e}")
             self._last_snippets_fetch = now
@@ -211,6 +227,12 @@ class ExpansionEngine:
                 logger.error(f"Failed to fetch auto-corrections: {e}")
             self._last_corrections_fetch = now
         return self._cached_corrections
+
+    def _get_cached_blacklist(self, blacklist: str):
+        if blacklist != self._cached_blacklist_raw:
+            self._cached_blacklist_raw = blacklist
+            self._cached_blacklist = [p.strip().lower() for p in blacklist.split(",") if p.strip()]
+        return self._cached_blacklist
 
     def _check_autocorrect(self, trigger_key):
         corrections = self._get_cached_corrections()
