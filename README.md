@@ -1,59 +1,63 @@
 # SnipGlide Python
 
-برنامج اختصارات نصية يعمل في الخلفية على Windows.
+A background text snippet expansion application for Windows.
 
-## المزايا
+## Features
 
-- يقبل أي اختصار نصي أو رموز، مثل:
-  - `#عنوان`
-  - `$توقيع`
+- **Categorize Snippets**: Group snippets into custom groups (e.g. Work, Personal) and filter them in the list.
+- **Excel Support**: Import shortcuts directly from Excel (`.xlsx`) files or download a formatted template to quickly structure your shortcuts.
+- **English UI**: The entire user interface, alerts, and settings are fully localized in English.
+- **Flexible Triggers**: Accepts any custom text or symbol sequence, such as:
+  - `#sig`
+  - `$date`
   - `!@#$`
-  - `مرحبا`
-- لا يشترط استخدام النقطتين `:`.
-- واجهة حديثة مع الوضع الفاتح والداكن.
-- تشغيل في الخلفية مع أيقونة بجوار الساعة.
-- تفعيل أو تعطيل كل اختصار على حدة.
-- بحث سريع.
-- حفظ تلقائي محليًا داخل:
-  `%APPDATA%\SnipGlidePython`
-- لا يرفع بياناتك إلى الإنترنت.
+  - `hello`
+- No trailing colons or fixed prefixes required.
+- Modern look and feel supporting Light and Dark modes.
+- Runs silently in the background with a system tray icon.
+- Toggle individual snippets on/off dynamically.
+- Quick real-time search.
+- Local automatic persistence: data is saved locally on your device under `%APPDATA%\SnipGlidePython` (it never leaves your machine).
 
-## التشغيل من بايثون
+## Running from Source
 
-1. ثبّت Python 3.11 أو أحدث.
-2. افتح PowerShell داخل مجلد البرنامج.
-3. نفّذ:
+1. Install Python 3.11 or newer.
+2. Open PowerShell or Command Prompt inside the project directory.
+3. Execute:
 
 ```powershell
+# Installs requirements in the environment
 pip install -r requirements.txt
+
+# Runs the application
 python app.py
 ```
 
-## إنشاء ملف EXE
+*Note: You can also use `run.bat` to automatically build/run the virtual environment and install requirements.*
 
-شغّل الملف:
+## Building Standalone Executable
+
+To compile SnipGlide into a standalone `.exe` file, run:
 
 ```powershell
 build_exe.bat
 ```
 
-سيظهر الملف التنفيذي داخل:
+The resulting executable will be available under:
 
 ```text
 dist\SnipGlide.exe
 ```
 
-## التشغيل مع بداية Windows
+## Running at Windows Startup
 
-بعد بناء ملف EXE:
+After building the EXE file:
+1. Press `Win + R` to open the Run dialog.
+2. Type `shell:startup` and press Enter.
+3. Place a shortcut to `SnipGlide.exe` inside the opened Startup folder.
 
-1. اضغط `Win + R`.
-2. اكتب:
-   `shell:startup`
-3. ضع اختصارًا لملف `SnipGlide.exe` داخل المجلد.
+## Notes & Best Practices
 
-## ملاحظات
-
-- البرنامج مصمم أساسًا لـ Windows.
-- بعض البرامج التي تعمل بصلاحية Administrator قد تتطلب تشغيل SnipGlide بالصلاحية نفسها.
-- لتجنب التوسعات غير المقصودة، استخدم اختصارات مميزة مثل `#sig` أو `@@addr`.
+- This application is optimized for Windows.
+- Some programs running as Administrator might block keystroke insertion unless SnipGlide is also running with Administrator privileges.
+- To prevent unintended text expansions, use unique prefixes or symbols (e.g., `#sig` or `@@addr`) for triggers.

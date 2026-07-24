@@ -1,17 +1,20 @@
 [
   {
     "trigger": "#sig",
-    "replacement": "مع خالص التحية،\nنادر",
+    "replacement": "Best regards,\nNader",
+    "group": "Work",
     "enabled": true
   },
   {
     "trigger": "$date",
-    "replacement": "24-07-2026",
+    "replacement": "2026-07-24",
+    "group": "General",
     "enabled": true
   },
   {
     "trigger": "!@#",
-    "replacement": "تم إدراج هذا النص بواسطة اختصار من الرموز.",
+    "replacement": "This text was inserted using a shortcut from symbols.",
+    "group": "Personal",
     "enabled": true
   }
 ]
