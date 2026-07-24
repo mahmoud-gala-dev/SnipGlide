@@ -92,6 +92,7 @@ def increment_usage(snippet_id: int):
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("UPDATE snippets SET usage_counter = usage_counter + 1 WHERE id = ?", (snippet_id,))
+        cursor.execute("INSERT INTO usage_history (snippet_id) VALUES (?)", (snippet_id,))
         conn.commit()
 
 def get_statistics() -> Dict:
@@ -113,10 +114,21 @@ def get_statistics() -> Dict:
         cursor.execute("SELECT shortcut, modified_date FROM snippets ORDER BY modified_date DESC LIMIT 5")
         recent = [dict(row) for row in cursor.fetchall()]
         
+        # Query past 7 days daily counts
+        cursor.execute("""
+            SELECT date(used_at) as day, COUNT(*) as count 
+            FROM usage_history 
+            WHERE used_at >= date('now', '-6 days') 
+            GROUP BY date(used_at)
+            ORDER BY date(used_at) ASC
+        """)
+        daily_stats = {row["day"]: row["count"] for row in cursor.fetchall()}
+        
         return {
             "total_snippets": total_snippets,
             "total_groups": total_groups,
             "total_expansions": total_expansions,
             "most_used": most_used,
-            "recent": recent
+            "recent": recent,
+            "daily_stats": daily_stats
         }

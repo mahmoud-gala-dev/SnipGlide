@@ -18,11 +18,13 @@ class SettingsPage(ctk.CTkFrame):
         self.tabview.add("Engine")
         self.tabview.add("Security")
         self.tabview.add("AI Configuration")
+        self.tabview.add("Autocorrect")
         
         self._build_general_tab()
         self._build_engine_tab()
         self._build_security_tab()
         self._build_ai_tab()
+        self._build_autocorrect_tab()
         
         self.save_btn = ctk.CTkButton(self, text="Save Settings", command=self._save_all, height=35)
         self.save_btn.pack(pady=20, anchor="e", padx=20)
@@ -39,6 +41,17 @@ class SettingsPage(ctk.CTkFrame):
         self.max_buffer_entry = ctk.CTkEntry(tab, width=200)
         self.max_buffer_entry.pack(pady=2, anchor="w", padx=20)
         self.max_buffer_entry.insert(0, str(self.settings_dict.get("max_buffer", 250)))
+        
+        ctk.CTkLabel(tab, text="Color Theme Mode:").pack(pady=(15, 2), anchor="w", padx=20)
+        self.theme_var = ctk.StringVar(value=self.settings_dict.get("theme", "System"))
+        self.theme_menu = ctk.CTkOptionMenu(
+            tab,
+            variable=self.theme_var,
+            values=["System", "Dark", "Light"],
+            width=200,
+            command=self._on_theme_change
+        )
+        self.theme_menu.pack(pady=2, anchor="w", padx=20)
         
     def _build_engine_tab(self):
         tab = self.tabview.tab("Engine")
@@ -96,6 +109,18 @@ class SettingsPage(ctk.CTkFrame):
         )
         self.test_key_btn.pack(pady=15, anchor="w", padx=20)
         
+        ctk.CTkLabel(tab, text="AI Temperature (0.0 = Precise, 1.0 = Creative):").pack(pady=(10, 2), anchor="w", padx=20)
+        self.ai_temp_var = ctk.DoubleVar(value=float(self.settings_dict.get("ai_temperature", 0.7)))
+        
+        slider_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        slider_frame.pack(pady=2, anchor="w", padx=20, fill="x")
+        
+        self.ai_temp_slider = ctk.CTkSlider(slider_frame, from_=0.0, to=1.0, number_of_steps=10, variable=self.ai_temp_var, width=250, command=self._on_temp_slider_change)
+        self.ai_temp_slider.pack(side="left")
+        
+        self.ai_temp_val_lbl = ctk.CTkLabel(slider_frame, text=f"{self.ai_temp_var.get():.1f}")
+        self.ai_temp_val_lbl.pack(side="left", padx=10)
+        
     def _toggle_master_password(self):
         enabled = bool(self.security_enabled_switch.get())
         if enabled and not self.settings_dict.get("master_password_hash"):
@@ -118,12 +143,14 @@ class SettingsPage(ctk.CTkFrame):
         self.settings_dict["enabled"] = bool(self.engine_enabled_switch.get())
         self.settings_dict["case_sensitive"] = bool(self.case_sensitive_switch.get())
         self.settings_dict["blacklist"] = self.blacklist_entry.get().strip()
+        self.settings_dict["theme"] = self.theme_var.get()
         
         self.settings_dict["master_password_enabled"] = bool(self.security_enabled_switch.get())
         self.settings_dict["lock_on_startup"] = bool(self.lock_startup_switch.get())
         
         self.settings_dict["ai_provider"] = self.ai_provider_var.get()
         self.settings_dict["ai_api_key"] = self.ai_key_entry.get().strip()
+        self.settings_dict["ai_temperature"] = float(self.ai_temp_var.get())
         
         self.save_callback()
 
@@ -169,3 +196,104 @@ class SettingsPage(ctk.CTkFrame):
         
         ok_btn = ctk.CTkButton(popup, text="OK", width=100, command=popup.destroy)
         ok_btn.pack(pady=(5, 15))
+
+    def _on_theme_change(self, mode: str):
+        ctk.set_appearance_mode(mode)
+
+    def _on_temp_slider_change(self, val):
+        self.ai_temp_val_lbl.configure(text=f"{float(val):.1f}")
+
+    def _build_autocorrect_tab(self):
+        tab = self.tabview.tab("Autocorrect")
+        tab.grid_columnconfigure((0, 1), weight=1)
+        tab.grid_rowconfigure(0, weight=1)
+        
+        add_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        add_frame.grid(row=0, column=0, sticky="nsew", padx=15, pady=15)
+        
+        ctk.CTkLabel(add_frame, text="Add New Correction", font=ctk.CTkFont(size=14, weight="bold")).pack(anchor="w", pady=(0, 10))
+        
+        ctk.CTkLabel(add_frame, text="Typo (misspelled word):").pack(anchor="w", pady=(5, 2))
+        self.typo_entry = ctk.CTkEntry(add_frame, placeholder_text="e.g. teh", width=220)
+        self.typo_entry.pack(anchor="w", pady=2)
+        
+        ctk.CTkLabel(add_frame, text="Correction (correct word):").pack(anchor="w", pady=(10, 2))
+        self.correction_entry = ctk.CTkEntry(add_frame, placeholder_text="e.g. the", width=220)
+        self.correction_entry.pack(anchor="w", pady=2)
+        
+        self.add_correct_btn = ctk.CTkButton(add_frame, text="➕ Add Mapping", command=self._add_autocorrect_mapping, width=220)
+        self.add_correct_btn.pack(anchor="w", pady=15)
+        
+        from snipglide.utils.helpers import create_context_menu
+        create_context_menu(self.typo_entry)
+        create_context_menu(self.correction_entry)
+        
+        list_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        list_frame.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
+        list_frame.grid_columnconfigure(0, weight=1)
+        list_frame.grid_rowconfigure(1, weight=1)
+        
+        ctk.CTkLabel(list_frame, text="Current Corrections Mappings", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, sticky="w", pady=(0, 10))
+        
+        self.autocorrect_scroll = ctk.CTkScrollableFrame(list_frame, height=220)
+        self.autocorrect_scroll.grid(row=1, column=0, sticky="nsew")
+        
+        self._refresh_autocorrect_list()
+        
+    def _refresh_autocorrect_list(self):
+        for widget in self.autocorrect_scroll.winfo_children():
+            widget.destroy()
+            
+        from snipglide.database.autocorrect_repo import get_all_corrections
+        try:
+            corrections = get_all_corrections()
+        except Exception:
+            corrections = {}
+            
+        if not corrections:
+            ctk.CTkLabel(self.autocorrect_scroll, text="No corrections defined.", text_color="gray").pack(pady=20)
+            return
+            
+        for typo, correction in corrections.items():
+            row = ctk.CTkFrame(self.autocorrect_scroll, fg_color=("gray85", "gray20"))
+            row.pack(fill="x", pady=3, padx=2)
+            
+            lbl = ctk.CTkLabel(row, text=f"{typo} ➡️ {correction}", anchor="w", font=ctk.CTkFont(size=11))
+            lbl.pack(side="left", padx=10, pady=5, fill="x", expand=True)
+            
+            del_btn = ctk.CTkButton(
+                row,
+                text="🗑️",
+                width=24,
+                height=24,
+                fg_color="#dc2626",
+                hover_color="#b91c1c",
+                command=lambda t=typo: self._delete_autocorrect_mapping(t)
+            )
+            del_btn.pack(side="right", padx=5)
+            
+    def _add_autocorrect_mapping(self):
+        typo = self.typo_entry.get().strip().lower()
+        correction = self.correction_entry.get().strip()
+        
+        if not typo or not correction:
+            return
+            
+        from snipglide.database.autocorrect_repo import add_autocorrect
+        try:
+            add_autocorrect(typo, correction)
+            self.typo_entry.delete(0, "end")
+            self.correction_entry.delete(0, "end")
+            self._refresh_autocorrect_list()
+        except Exception as e:
+            from snipglide.utils.logger import logger
+            logger.error(f"Failed to add autocorrect: {e}")
+            
+    def _delete_autocorrect_mapping(self, typo: str):
+        from snipglide.database.autocorrect_repo import delete_autocorrect
+        try:
+            delete_autocorrect(typo)
+            self._refresh_autocorrect_list()
+        except Exception as e:
+            from snipglide.utils.logger import logger
+            logger.error(f"Failed to delete autocorrect: {e}")

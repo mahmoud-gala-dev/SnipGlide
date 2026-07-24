@@ -73,12 +73,22 @@ class Dashboard(ctk.CTkFrame):
         self.draw_chart()
         
     def draw_chart(self):
+        from datetime import datetime, timedelta
         self.chart_canvas.delete("all")
-        days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-        stats = get_statistics()
-        total = stats["total_expansions"]
         
-        base_values = [random.randint(2, 15) for _ in range(7)] if total == 0 else [random.randint(int(total*0.05) + 1, int(total*0.25) + 3) for _ in range(7)]
+        stats = get_statistics()
+        daily_stats = stats.get("daily_stats", {})
+        
+        # Build list of past 7 days
+        now = datetime.now()
+        days = []
+        base_values = []
+        for i in range(6, -1, -1):
+            d = now - timedelta(days=i)
+            days.append(d.strftime("%a"))
+            db_key = d.strftime("%Y-%m-%d")
+            base_values.append(daily_stats.get(db_key, 0))
+            
         max_val = max(base_values) if max(base_values) > 0 else 10
         
         height = 180

@@ -38,7 +38,7 @@ def sort_models(model_names: list[str]) -> list[str]:
         return 0
     return sorted(model_names, key=get_priority, reverse=True)
 
-def call_ai_completion(prompt: str, api_key: str, provider: str = "gemini") -> str:
+def call_ai_completion(prompt: str, api_key: str, provider: str = "gemini", temperature: float = 0.7) -> str:
     if not api_key:
         clean = prompt.replace("Rewrite the following text to make it professional:", "").strip()
         clean = clean.replace("Correct grammar for:", "").strip()
@@ -73,7 +73,10 @@ def call_ai_completion(prompt: str, api_key: str, provider: str = "gemini") -> s
                 url = f"https://generativelanguage.googleapis.com/{api_version}/{model_name}:generateContent?key={api_key}"
                 headers = {"Content-Type": "application/json"}
                 payload = {
-                    "contents": [{"parts": [{"text": prompt}]}]
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {
+                        "temperature": temperature
+                    }
                 }
                 req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=10) as res:

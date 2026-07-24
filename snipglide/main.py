@@ -54,6 +54,12 @@ class AppCoordinator:
         self.window = MainWindow(engine_toggle_callback=self.toggle_engine_state)
         self.clipboard_monitor.start()
         
+        from pynput.keyboard import GlobalHotKeys
+        self.hotkeys = GlobalHotKeys({
+            '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search)
+        })
+        self.hotkeys.start()
+        
         if self.settings.get("master_password_enabled", False) and self.settings.get("lock_on_startup", False):
             self.window.withdraw()
             self._prompt_startup_lock()
@@ -67,6 +73,15 @@ class AppCoordinator:
         self._start_tray()
         
         self.window.mainloop()
+
+    def show_quick_search(self):
+        if not self.window:
+            return
+        from snipglide.ui.dialogs.quick_search_dialog import QuickSearchDialog
+        dialog = QuickSearchDialog(
+            self.window,
+            parse_callback=self.engine.parser.parse_variables
+        )
         
     def _prompt_startup_lock(self):
         pwd_hash = self.settings.get("master_password_hash", "")
@@ -130,6 +145,8 @@ class AppCoordinator:
         self.engine.stop()
         if hasattr(self, "clipboard_monitor"):
             self.clipboard_monitor.stop()
+        if hasattr(self, "hotkeys"):
+            self.hotkeys.stop()
         if self.tray_icon:
             self.tray_icon.stop()
         if self.window:

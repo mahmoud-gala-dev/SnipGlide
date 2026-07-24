@@ -92,4 +92,14 @@ def initialize_database():
         
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_clipboard_history_copied ON clipboard_history (copied_at)")
         
+        # Create usage history table for analytics
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS usage_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                snippet_id INTEGER NOT NULL,
+                used_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_history_used ON usage_history (used_at)")
+        
         conn.commit()

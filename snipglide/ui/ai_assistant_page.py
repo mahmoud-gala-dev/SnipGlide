@@ -30,12 +30,25 @@ class AIAssistantPage(ctk.CTkFrame):
         left.grid_rowconfigure(1, weight=1)
         
         ctk.CTkLabel(left, text="Enter your prompt / instructions:", font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, sticky="w", pady=5)
+        
+        preset_frame = ctk.CTkFrame(left, fg_color="transparent")
+        preset_frame.grid(row=1, column=0, sticky="ew", pady=5)
+        ctk.CTkLabel(preset_frame, text="Prompt Preset:").pack(side="left", padx=(0, 5))
+        self.preset_var = ctk.StringVar(value="Custom")
+        self.preset_menu = ctk.CTkOptionMenu(
+            preset_frame,
+            variable=self.preset_var,
+            values=["Custom", "Professional Reschedule", "Friendly Follow-up", "Code Explainer", "SQL Query Builder"],
+            command=self._on_preset_change
+        )
+        self.preset_menu.pack(side="left", fill="x", expand=True)
+        
         self.prompt_text = ctk.CTkTextbox(left, height=220)
-        self.prompt_text.grid(row=1, column=0, sticky="nsew", pady=5)
+        self.prompt_text.grid(row=2, column=0, sticky="nsew", pady=5)
         self.prompt_text.insert("1.0", "Write a professional email template asking for a reschedule, including fields for {{form:New Date}} and {{form:Reason}}.")
         
         self.gen_btn = ctk.CTkButton(left, text="✨ Generate Snippet Text", command=self._generate)
-        self.gen_btn.grid(row=2, column=0, sticky="ew", pady=10)
+        self.gen_btn.grid(row=3, column=0, sticky="ew", pady=10)
         
         right = ctk.CTkFrame(content, fg_color="transparent")
         right.grid(row=0, column=1, sticky="nsew", padx=15, pady=15)
@@ -59,6 +72,19 @@ class AIAssistantPage(ctk.CTkFrame):
         from snipglide.utils.helpers import create_context_menu
         for attr in [self.prompt_text, self.output_text, self.shortcut_entry]:
             create_context_menu(attr)
+            
+    def _on_preset_change(self, preset: str):
+        self.prompt_text.delete("1.0", "end")
+        if preset == "Professional Reschedule":
+            self.prompt_text.insert("1.0", "Write a professional email template asking for a meeting reschedule. Include fields for {{form:Original Date}}, {{form:Suggested New Date}}, and {{form:Reason for change}}.")
+        elif preset == "Friendly Follow-up":
+            self.prompt_text.insert("1.0", "Write a friendly, polite follow-up email template asking for feedback on a proposal. Include {{form:Proposal Name}}.")
+        elif preset == "Code Explainer":
+            self.prompt_text.insert("1.0", "Write a snippet template that explains how a piece of code works in clean bullet points. Include {{form:Language}}.")
+        elif preset == "SQL Query Builder":
+            self.prompt_text.insert("1.0", "Write a query template to SELECT data from a table based on user criteria. Include {{form:Table Name}} and {{form:Where Condition}}.")
+        else:
+            self.prompt_text.insert("1.0", "")
         
     def _generate(self):
         prompt = self.prompt_text.get("1.0", "end-1c").strip()
@@ -69,13 +95,14 @@ class AIAssistantPage(ctk.CTkFrame):
         settings = self.settings_provider()
         api_key = settings.get("ai_api_key", "")
         provider = settings.get("ai_provider", "gemini")
+        temperature = float(settings.get("ai_temperature", 0.7))
         
         self.toast_callback("AI generating content...")
         self.gen_btn.configure(state="disabled", text="Generating...")
         
         def run():
             try:
-                result = call_ai_completion(prompt, api_key, provider)
+                result = call_ai_completion(prompt, api_key, provider, temperature=temperature)
                 self.after(0, lambda: self.output_text.delete("1.0", "end"))
                 self.after(0, lambda: self.output_text.insert("1.0", result))
                 self.after(0, lambda: self.toast_callback("Generation complete!"))
