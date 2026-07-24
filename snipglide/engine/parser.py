@@ -40,8 +40,8 @@ def parse_variables(text: str, usage_count: int = 0) -> str:
     text = text.replace("{{computer}}", socket.gethostname())
     text = text.replace("{{hostname}}", socket.gethostname())
     
-    if "{{clipboard}}" in text:
-        text = text.replace("{{clipboard}}", get_clipboard_text())
+    if re.search(r"\{\{clipboard\}\}", text, re.IGNORECASE):
+        text = re.sub(r"\{\{clipboard\}\}", lambda m: get_clipboard_text(), text, flags=re.IGNORECASE)
         
     text = text.replace("{{uuid}}", str(uuid.uuid4()))
     if "{{random}}" in text:

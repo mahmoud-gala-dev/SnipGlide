@@ -33,16 +33,38 @@ class SettingsPage(ctk.CTkFrame):
         tab = self.tabview.tab("General")
         
         self.start_min_switch = ctk.CTkSwitch(tab, text="Start Minimized")
-        self.start_min_switch.pack(pady=15, anchor="w", padx=20)
+        self.start_min_switch.pack(pady=10, anchor="w", padx=20)
         if self.settings_dict.get("start_minimized", False):
             self.start_min_switch.select()
             
-        ctk.CTkLabel(tab, text="Max buffer length (keys tracked):").pack(pady=(15, 2), anchor="w", padx=20)
+        self.play_sound_switch = ctk.CTkSwitch(tab, text="Play sound on trigger expansion")
+        self.play_sound_switch.pack(pady=10, anchor="w", padx=20)
+        if self.settings_dict.get("play_sound", True):
+            self.play_sound_switch.select()
+            
+        self.start_on_boot_switch = ctk.CTkSwitch(tab, text="Launch automatically on Windows Startup")
+        self.start_on_boot_switch.pack(pady=10, anchor="w", padx=20)
+
+        # Sidebar Font Size
+        ctk.CTkLabel(tab, text="Sidebar Font Size:").pack(pady=(12, 2), anchor="w", padx=20)
+        self.sidebar_font_size_slider = ctk.CTkSlider(tab, from_=10, to=20, number_of_steps=10)
+        self.sidebar_font_size_slider.set(self.settings_dict.get("sidebar_font_size", 13))
+        self.sidebar_font_size_slider.pack(pady=2, anchor="w", padx=20)
+
+        # Sidebar RTL Direction
+        self.sidebar_rtl_switch = ctk.CTkSwitch(tab, text="Sidebar RTL Direction")
+        self.sidebar_rtl_switch.pack(pady=10, anchor="w", padx=20)
+        if self.settings_dict.get("sidebar_direction", "ltr") == "rtl":
+            self.sidebar_rtl_switch.select()
+        if self.settings_dict.get("start_on_boot", False):
+            self.start_on_boot_switch.select()
+            
+        ctk.CTkLabel(tab, text="Max buffer length (keys tracked):").pack(pady=(12, 2), anchor="w", padx=20)
         self.max_buffer_entry = ctk.CTkEntry(tab, width=200)
         self.max_buffer_entry.pack(pady=2, anchor="w", padx=20)
         self.max_buffer_entry.insert(0, str(self.settings_dict.get("max_buffer", 250)))
         
-        ctk.CTkLabel(tab, text="Color Theme Mode:").pack(pady=(15, 2), anchor="w", padx=20)
+        ctk.CTkLabel(tab, text="Color Theme Mode:").pack(pady=(12, 2), anchor="w", padx=20)
         self.theme_var = ctk.StringVar(value=self.settings_dict.get("theme", "System"))
         self.theme_menu = ctk.CTkOptionMenu(
             tab,
@@ -52,6 +74,17 @@ class SettingsPage(ctk.CTkFrame):
             command=self._on_theme_change
         )
         self.theme_menu.pack(pady=2, anchor="w", padx=20)
+        
+        ctk.CTkLabel(tab, text="Database Maintenance & Backups:", font=ctk.CTkFont(weight="bold")).pack(pady=(15, 5), anchor="w", padx=20)
+        
+        backup_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        backup_frame.pack(pady=5, anchor="w", padx=20)
+        
+        self.export_btn = ctk.CTkButton(backup_frame, text="📤 Export Full Backup", command=self._export_db_backup, width=160)
+        self.export_btn.pack(side="left", padx=(0, 10))
+        
+        self.import_btn = ctk.CTkButton(backup_frame, text="📥 Import Backup", command=self._import_db_backup, width=160, fg_color=("gray75", "gray35"), text_color=("black", "white"))
+        self.import_btn.pack(side="left")
         
     def _build_engine_tab(self):
         tab = self.tabview.tab("Engine")
@@ -139,19 +172,31 @@ class SettingsPage(ctk.CTkFrame):
     def _save_all(self):
         self.settings_dict["start_minimized"] = bool(self.start_min_switch.get())
         self.settings_dict["max_buffer"] = int(self.max_buffer_entry.get().strip() or "250")
-        
+
+        self.settings_dict["play_sound"] = bool(self.play_sound_switch.get())
+
+        boot_changed = bool(self.start_on_boot_switch.get()) != self.settings_dict.get("start_on_boot", False)
+        self.settings_dict["start_on_boot"] = bool(self.start_on_boot_switch.get())
+        if boot_changed:
+            from snipglide.services.startup import set_autostart
+            set_autostart(self.settings_dict["start_on_boot"])
+
         self.settings_dict["enabled"] = bool(self.engine_enabled_switch.get())
         self.settings_dict["case_sensitive"] = bool(self.case_sensitive_switch.get())
         self.settings_dict["blacklist"] = self.blacklist_entry.get().strip()
         self.settings_dict["theme"] = self.theme_var.get()
-        
+
+        # Sidebar custom settings
+        self.settings_dict["sidebar_font_size"] = int(self.sidebar_font_size_slider.get())
+        self.settings_dict["sidebar_direction"] = "rtl" if self.sidebar_rtl_switch.get() else "ltr"
+
         self.settings_dict["master_password_enabled"] = bool(self.security_enabled_switch.get())
         self.settings_dict["lock_on_startup"] = bool(self.lock_startup_switch.get())
-        
+
         self.settings_dict["ai_provider"] = self.ai_provider_var.get()
         self.settings_dict["ai_api_key"] = self.ai_key_entry.get().strip()
         self.settings_dict["ai_temperature"] = float(self.ai_temp_var.get())
-        
+
         self.save_callback()
 
     def _test_api_connection(self):
@@ -199,6 +244,28 @@ class SettingsPage(ctk.CTkFrame):
 
     def _on_theme_change(self, mode: str):
         ctk.set_appearance_mode(mode)
+
+    def _export_db_backup(self):
+        from tkinter import filedialog
+        path = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON Files", "*.json")])
+        if not path:
+            return
+        from snipglide.services.backup import export_backup
+        if export_backup(path):
+            self._show_info_popup("Export Backup", "Database backup exported successfully!", error=False)
+        else:
+            self._show_info_popup("Export Backup", "Failed to export backup. Check logs for details.", error=True)
+
+    def _import_db_backup(self):
+        from tkinter import filedialog
+        path = filedialog.askopenfilename(filetypes=[("JSON Files", "*.json")])
+        if not path:
+            return
+        from snipglide.services.backup import import_backup
+        if import_backup(path):
+            self._show_info_popup("Import Backup", "Database backup imported successfully! Please restart the application to reload changes.", error=False)
+        else:
+            self._show_info_popup("Import Backup", "Failed to import backup. Verify file schema.", error=True)
 
     def _on_temp_slider_change(self, val):
         self.ai_temp_val_lbl.configure(text=f"{float(val):.1f}")

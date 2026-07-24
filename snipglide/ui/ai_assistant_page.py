@@ -69,9 +69,10 @@ class AIAssistantPage(ctk.CTkFrame):
         self.save_btn = ctk.CTkButton(save_frame, text="💾 Save Snippet", command=self._save_snippet)
         self.save_btn.pack(side="left", fill="x", expand=True, padx=5)
         
-        from snipglide.utils.helpers import create_context_menu
+        from snipglide.utils.helpers import create_context_menu, apply_rtl_support
         for attr in [self.prompt_text, self.output_text, self.shortcut_entry]:
             create_context_menu(attr)
+            apply_rtl_support(attr)
             
     def _on_preset_change(self, preset: str):
         self.prompt_text.delete("1.0", "end")

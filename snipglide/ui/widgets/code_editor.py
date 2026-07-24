@@ -20,8 +20,9 @@ class CodeEditor(ctk.CTkFrame):
         self.textbox.bind("<KeyRelease>", self._on_key_release)
         self.textbox.bind("<Configure>", self._on_configure)
         
-        from snipglide.utils.helpers import create_context_menu
+        from snipglide.utils.helpers import create_context_menu, apply_rtl_support
         create_context_menu(self.textbox)
+        apply_rtl_support(self.textbox)
         
         self.update_line_numbers()
         

@@ -32,7 +32,7 @@ class Sidebar(ctk.CTkFrame):
                 font=ctk.CTkFont(size=13, weight="bold"),
                 command=lambda p=page_id: self.select_page(p)
             )
-            btn.pack(fill="x", padx=15, pady=4)
+            btn.pack(fill="x", padx=5, pady=4)
             self.nav_buttons[page_id] = btn
             
         self.select_page("Dashboard")
@@ -44,3 +44,19 @@ class Sidebar(ctk.CTkFrame):
             else:
                 btn.configure(fg_color="transparent", text_color=("black", "white"))
         self.select_callback(page_id)
+
+    def set_sidebar_font_size(self, size: int):
+        """Adjust font size for all navigation buttons in the sidebar."""
+        for btn in self.nav_buttons.values():
+            current_font = btn.cget("font")
+            try:
+                weight = "bold" if "bold" in str(current_font).lower() else None
+            except Exception:
+                weight = None
+            btn.configure(font=ctk.CTkFont(size=size, weight=weight))
+
+    def apply_sidebar_direction(self, direction: str):
+        """Set text direction for sidebar buttons based on RTL/LTR setting."""
+        anchor = "e" if direction.lower() == "rtl" else "w"
+        for btn in self.nav_buttons.values():
+            btn.configure(anchor=anchor)

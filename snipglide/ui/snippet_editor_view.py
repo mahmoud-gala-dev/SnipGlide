@@ -133,9 +133,10 @@ class SnippetEditorView(ctk.CTkFrame):
         self.refresh_list()
         self._new_snippet()
         
-        from snipglide.utils.helpers import create_context_menu
+        from snipglide.utils.helpers import create_context_menu, apply_rtl_support
         for attr in [self.search_entry, self.shortcut_entry, self.desc_entry, self.app_filter_entry, self.win_filter_entry]:
             create_context_menu(attr)
+            apply_rtl_support(attr)
         
     def _on_lang_change(self):
         self.editor.highlight_code(self.lang_var.get())

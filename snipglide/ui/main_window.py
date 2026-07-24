@@ -66,6 +66,9 @@ class MainWindow(ctk.CTk):
         
         # Create and place Sidebar after pages are configured
         self.sidebar = Sidebar(self, select_callback=self.switch_page)
+        # Apply saved sidebar customizations on startup
+        self.sidebar.set_sidebar_font_size(self.settings.get("sidebar_font_size", 13))
+        self.sidebar.apply_sidebar_direction(self.settings.get("sidebar_direction", "ltr"))
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
     def get_settings(self) -> dict:
@@ -107,6 +110,13 @@ class MainWindow(ctk.CTk):
         
     def _save_settings(self):
         save_settings(self.settings)
+        # Apply sidebar customizations after saving settings
+        try:
+            self.sidebar.set_sidebar_font_size(self.settings.get("sidebar_font_size", 13))
+            self.sidebar.apply_sidebar_direction(self.settings.get("sidebar_direction", "ltr"))
+        except Exception as e:
+            from snipglide.utils.logger import logger
+            logger.error(f"Failed to apply sidebar settings: {e}")
         self.engine_toggle_callback()
         self.toast("Settings saved successfully!")
         

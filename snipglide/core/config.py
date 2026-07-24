@@ -27,6 +27,8 @@ DEFAULT_SETTINGS = {
     "ai_api_key": "",
     "ai_provider": "gemini",
     "theme": "System",
+    "sidebar_font_size": 13,
+    "sidebar_direction": "ltr",
 }
 
 def load_settings() -> dict:
@@ -43,3 +45,13 @@ def load_settings() -> dict:
 def save_settings(settings: dict):
     import json
     SETTINGS_FILE.write_text(json.dumps(settings, ensure_ascii=False, indent=2), encoding="utf-8")
+
+ARABIC_FONT_FAMILY = "Segoe UI"
+
+def set_arabic_font_family(name: str):
+    global ARABIC_FONT_FAMILY
+    ARABIC_FONT_FAMILY = name
+
+def get_arabic_font_family() -> str:
+    global ARABIC_FONT_FAMILY
+    return ARABIC_FONT_FAMILY

@@ -151,6 +151,7 @@ class ExpansionEngine:
                 self.buffer = ""
                 
                 increment_usage(snippet.id)
+                self._play_expansion_sound()
             except Exception as e:
                 logger.error(f"Expansion failed: {e}")
             finally:
@@ -180,8 +181,19 @@ class ExpansionEngine:
                     self.controller.release(keyboard.Key.backspace)
                     time.sleep(0.002)
                 self.controller.type(correction)
+                self._play_expansion_sound()
             except Exception as e:
                 logger.error(f"Autocorrect failed: {e}")
             finally:
                 time.sleep(0.01)
                 self.suspended = False
+
+    def _play_expansion_sound(self):
+        settings = self.settings_provider()
+        if settings.get("play_sound", True):
+            try:
+                import winsound
+                import threading
+                threading.Thread(target=lambda: winsound.Beep(2100, 32), daemon=True).start()
+            except Exception:
+                pass

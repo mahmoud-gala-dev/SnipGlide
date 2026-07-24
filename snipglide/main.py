@@ -18,6 +18,15 @@ class AppCoordinator:
         initialize_database()
         self.settings = load_settings()
         
+        # Download and load Google Arabic Font asynchronously
+        def load_font_async():
+            from snipglide.utils.helpers import download_and_load_arabic_font
+            from snipglide.core.config import set_arabic_font_family
+            font_name = download_and_load_arabic_font()
+            set_arabic_font_family(font_name)
+            
+        threading.Thread(target=load_font_async, daemon=True).start()
+        
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
             form_prompt_callback=self.show_form_prompt
