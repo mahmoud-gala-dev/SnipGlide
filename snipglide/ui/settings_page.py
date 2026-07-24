@@ -53,6 +53,11 @@ class SettingsPage(ctk.CTkFrame):
         if self.settings_dict.get("case_sensitive", True):
             self.case_sensitive_switch.select()
             
+        ctk.CTkLabel(tab, text="Application Blacklist (comma-separated executables):").pack(pady=(15, 2), anchor="w", padx=20)
+        self.blacklist_entry = ctk.CTkEntry(tab, width=350)
+        self.blacklist_entry.pack(pady=2, anchor="w", padx=20)
+        self.blacklist_entry.insert(0, str(self.settings_dict.get("blacklist", "")))
+            
     def _build_security_tab(self):
         tab = self.tabview.tab("Security")
         
@@ -82,6 +87,15 @@ class SettingsPage(ctk.CTkFrame):
         self.ai_key_entry.pack(pady=2, anchor="w", padx=20)
         self.ai_key_entry.insert(0, self.settings_dict.get("ai_api_key", ""))
         
+        self.test_key_btn = ctk.CTkButton(
+            tab,
+            text="⚡ Test Connection",
+            fg_color=("gray75", "gray25"),
+            text_color=("black", "white"),
+            command=self._test_api_connection
+        )
+        self.test_key_btn.pack(pady=15, anchor="w", padx=20)
+        
     def _toggle_master_password(self):
         enabled = bool(self.security_enabled_switch.get())
         if enabled and not self.settings_dict.get("master_password_hash"):
@@ -103,6 +117,7 @@ class SettingsPage(ctk.CTkFrame):
         
         self.settings_dict["enabled"] = bool(self.engine_enabled_switch.get())
         self.settings_dict["case_sensitive"] = bool(self.case_sensitive_switch.get())
+        self.settings_dict["blacklist"] = self.blacklist_entry.get().strip()
         
         self.settings_dict["master_password_enabled"] = bool(self.security_enabled_switch.get())
         self.settings_dict["lock_on_startup"] = bool(self.lock_startup_switch.get())
@@ -111,3 +126,46 @@ class SettingsPage(ctk.CTkFrame):
         self.settings_dict["ai_api_key"] = self.ai_key_entry.get().strip()
         
         self.save_callback()
+
+    def _test_api_connection(self):
+        api_key = self.ai_key_entry.get().strip()
+        provider = self.ai_provider_var.get()
+        
+        if not api_key:
+            self._show_info_popup("AI Connection Test", "API Key field is empty.", error=True)
+            return
+            
+        self.test_key_btn.configure(state="disabled", text="Testing...")
+        
+        def run():
+            from snipglide.services.ai import test_ai_key
+            success, msg = test_ai_key(api_key, provider)
+            self.after(0, lambda: self.test_key_btn.configure(state="normal", text="⚡ Test Connection"))
+            self.after(0, lambda: self._show_info_popup("AI Connection Test", msg, error=not success))
+            
+        import threading
+        threading.Thread(target=run, daemon=True).start()
+
+    def _show_info_popup(self, title: str, message: str, error: bool = False):
+        popup = ctk.CTkToplevel(self)
+        popup.title(title)
+        popup.geometry("380x180")
+        popup.resizable(False, False)
+        popup.transient(self.winfo_toplevel())
+        popup.grab_set()
+        
+        popup.update_idletasks()
+        x = self.winfo_toplevel().winfo_x() + (self.winfo_toplevel().winfo_width() // 2) - 190
+        y = self.winfo_toplevel().winfo_y() + (self.winfo_toplevel().winfo_height() // 2) - 90
+        popup.geometry(f"+{x}+{y}")
+        
+        color = "#dc2626" if error else "#16a34a"
+        icon_text = "❌ Connection Failed" if error else "✅ Connection Success"
+        
+        ctk.CTkLabel(popup, text=icon_text, font=ctk.CTkFont(size=14, weight="bold"), text_color=color).pack(pady=(20, 10))
+        
+        msg_lbl = ctk.CTkLabel(popup, text=message, wraplength=320, justify="center")
+        msg_lbl.pack(pady=10, fill="both", expand=True)
+        
+        ok_btn = ctk.CTkButton(popup, text="OK", width=100, command=popup.destroy)
+        ok_btn.pack(pady=(5, 15))

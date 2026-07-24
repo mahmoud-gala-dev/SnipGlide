@@ -4,6 +4,7 @@ import re
 from typing import Optional, Callable
 from pynput import keyboard
 from snipglide.database.snippet_repo import get_all_snippets, increment_usage
+from snipglide.database.autocorrect_repo import get_all_corrections
 from snipglide.engine.parser import parse_variables, get_form_fields, replace_form_fields
 from snipglide.engine.window_tracker import get_active_window_info, is_password_field_active
 from snipglide.utils.logger import logger
@@ -63,6 +64,8 @@ class ExpansionEngine:
                 keyboard.Key.end, keyboard.Key.page_up, keyboard.Key.page_down,
                 keyboard.Key.delete,
             }:
+                if key in {keyboard.Key.space, keyboard.Key.enter, keyboard.Key.tab}:
+                    self._check_autocorrect(key)
                 self.buffer = ""
                 return
 
@@ -75,6 +78,15 @@ class ExpansionEngine:
             self.buffer = self.buffer[-max_len:]
 
             win_title, win_proc = get_active_window_info()
+            
+            blacklist = settings.get("blacklist", "")
+            if blacklist:
+                blocked_procs = [p.strip().lower() for p in blacklist.split(",") if p.strip()]
+                for bp in blocked_procs:
+                    if bp in win_proc.lower():
+                        self.buffer = ""
+                        return
+
             snippets = get_all_snippets()
             
             matched_snippet = None
@@ -143,4 +155,33 @@ class ExpansionEngine:
                 logger.error(f"Expansion failed: {e}")
             finally:
                 time.sleep(0.03)
+                self.suspended = False
+
+    def _check_autocorrect(self, trigger_key):
+        try:
+            corrections = get_all_corrections()
+        except Exception as e:
+            logger.error(f"Failed to fetch auto-corrections: {e}")
+            return
+            
+        for typo, correction in corrections.items():
+            pattern = r"(?:^|\s)" + re.escape(typo) + r"$"
+            match = re.search(pattern, self.buffer)
+            if match:
+                self._perform_autocorrect(typo, correction, trigger_key)
+                break
+
+    def _perform_autocorrect(self, typo, correction, trigger_key):
+        with self._lock:
+            self.suspended = True
+            try:
+                for _ in range(len(typo)):
+                    self.controller.press(keyboard.Key.backspace)
+                    self.controller.release(keyboard.Key.backspace)
+                    time.sleep(0.002)
+                self.controller.type(correction)
+            except Exception as e:
+                logger.error(f"Autocorrect failed: {e}")
+            finally:
+                time.sleep(0.01)
                 self.suspended = False

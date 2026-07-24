@@ -22,6 +22,15 @@ def parse_variables(text: str, usage_count: int = 0) -> str:
     text = text.replace("{{time}}", now.strftime("%H:%M:%S"))
     text = text.replace("{{datetime}}", now.strftime("%Y-%m-%d %H:%M:%S"))
     
+    # Support custom format: {{date:%Y/%m/%d}} etc.
+    dt_matches = re.findall(r"\{\{(date|time|datetime):([^}]+)\}\}", text)
+    for macro, fmt in dt_matches:
+        try:
+            formatted = now.strftime(fmt)
+        except Exception:
+            formatted = ""
+        text = text.replace(f"{{{{{macro}:{fmt}}}}}", formatted)
+    
     try:
         username = os.getlogin()
     except Exception:

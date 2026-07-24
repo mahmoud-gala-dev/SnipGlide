@@ -20,6 +20,9 @@ class CodeEditor(ctk.CTkFrame):
         self.textbox.bind("<KeyRelease>", self._on_key_release)
         self.textbox.bind("<Configure>", self._on_configure)
         
+        from snipglide.utils.helpers import create_context_menu
+        create_context_menu(self.textbox)
+        
         self.update_line_numbers()
         
     def get_text(self) -> str:

@@ -10,6 +10,7 @@ from snipglide.engine.listener import ExpansionEngine
 from snipglide.ui.main_window import MainWindow
 from snipglide.ui.dialogs.security_dialog import SecurityDialog
 from snipglide.services.security import hash_password
+from snipglide.services.clipboard_monitor import ClipboardMonitor
 from snipglide.utils.logger import logger
 
 class AppCoordinator:
@@ -20,6 +21,10 @@ class AppCoordinator:
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
             form_prompt_callback=self.show_form_prompt
+        )
+        
+        self.clipboard_monitor = ClipboardMonitor(
+            settings_provider=self.get_current_settings
         )
         
         self.window = None
@@ -47,6 +52,7 @@ class AppCoordinator:
 
     def run(self):
         self.window = MainWindow(engine_toggle_callback=self.toggle_engine_state)
+        self.clipboard_monitor.start()
         
         if self.settings.get("master_password_enabled", False) and self.settings.get("lock_on_startup", False):
             self.window.withdraw()
@@ -122,6 +128,8 @@ class AppCoordinator:
             
     def _quit_app(self):
         self.engine.stop()
+        if hasattr(self, "clipboard_monitor"):
+            self.clipboard_monitor.stop()
         if self.tray_icon:
             self.tray_icon.stop()
         if self.window:

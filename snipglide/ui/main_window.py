@@ -6,6 +6,8 @@ from snipglide.ui.dashboard import Dashboard
 from snipglide.ui.snippet_editor_view import SnippetEditorView
 from snipglide.ui.settings_page import SettingsPage
 from snipglide.ui.marketplace import Marketplace
+from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
+from snipglide.ui.ai_assistant_page import AIAssistantPage
 from snipglide.core.config import load_settings, save_settings, APP_NAME
 from snipglide.database.snippet_repo import get_all_snippets
 from snipglide.services.backup import (
@@ -59,6 +61,8 @@ class MainWindow(ctk.CTk):
         self.pages["Snippets"] = SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings)
         self.pages["Settings"] = SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings)
         self.pages["Marketplace"] = Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views)
+        self.pages["Clipboard"] = ClipboardHistoryPage(self.content_frame, toast_callback=self.toast, navigate_to_snippet_callback=self._navigate_to_snippet)
+        self.pages["AIAssistant"] = AIAssistantPage(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings, refresh_callback=self._refresh_all_views)
         
         # Create and place Sidebar after pages are configured
         self.sidebar = Sidebar(self, select_callback=self.switch_page)
@@ -77,6 +81,8 @@ class MainWindow(ctk.CTk):
         
         if page_id == "Dashboard":
             self.pages["Dashboard"].refresh_stats()
+        elif page_id == "Clipboard":
+            self.pages["Clipboard"].refresh_history()
             
     def toast(self, message: str, error: bool = False):
         popup = ctk.CTkToplevel(self)
@@ -183,3 +189,9 @@ class MainWindow(ctk.CTk):
                 self.toast(f"Restored {count} snippets.")
             except Exception as e:
                 self.toast(str(e), error=True)
+
+    def _navigate_to_snippet(self, text: str):
+        self.switch_page("Snippets")
+        self.sidebar.select_page("Snippets")
+        self.pages["Snippets"]._new_snippet()
+        self.pages["Snippets"].editor.set_text(text)

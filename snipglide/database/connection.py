@@ -56,4 +56,40 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_group_id ON snippets (group_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_favorite ON snippets (favorite)")
         
+        # Create autocorrect table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS autocorrect (
+                typo TEXT PRIMARY KEY,
+                correction TEXT NOT NULL
+            )
+        """)
+        
+        # Prepopulate autocorrect if empty
+        cursor.execute("SELECT COUNT(*) FROM autocorrect")
+        if cursor.fetchone()[0] == 0:
+            default_corrections = [
+                ("teh", "the"),
+                ("recieve", "receive"),
+                ("seperate", "separate"),
+                ("wierd", "weird"),
+                ("dont", "don't"),
+                ("cant", "can't"),
+                ("wont", "won't"),
+                ("shoudl", "should"),
+                ("becuase", "because"),
+                ("definately", "definitely")
+            ]
+            cursor.executemany("INSERT INTO autocorrect (typo, correction) VALUES (?, ?)", default_corrections)
+            
+        # Create clipboard history table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS clipboard_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT UNIQUE NOT NULL,
+                copied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_clipboard_history_copied ON clipboard_history (copied_at)")
+        
         conn.commit()

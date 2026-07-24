@@ -1,4 +1,5 @@
 import customtkinter as ctk
+import threading
 from snipglide.models.snippet import Snippet
 from snipglide.models.group import Group
 from snipglide.database.snippet_repo import get_all_snippets, add_snippet, update_snippet, delete_snippet
@@ -131,6 +132,10 @@ class SnippetEditorView(ctk.CTkFrame):
         self.update_group_dropdowns()
         self.refresh_list()
         self._new_snippet()
+        
+        from snipglide.utils.helpers import create_context_menu
+        for attr in [self.search_entry, self.shortcut_entry, self.desc_entry, self.app_filter_entry, self.win_filter_entry]:
+            create_context_menu(attr)
         
     def _on_lang_change(self):
         self.editor.highlight_code(self.lang_var.get())

@@ -14,6 +14,8 @@ class Sidebar(ctk.CTkFrame):
         pages = [
             ("Dashboard", "📊 Dashboard"),
             ("Snippets", "📝 Snippets"),
+            ("Clipboard", "📋 Clipboard"),
+            ("AIAssistant", "🤖 AI Assistant"),
             ("Settings", "⚙️ Settings"),
             ("Marketplace", "🛍️ Marketplace")
         ]
