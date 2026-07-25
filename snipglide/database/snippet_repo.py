@@ -34,6 +34,13 @@ def get_all_snippets() -> List[Snippet]:
         rows = cursor.fetchall()
         return [row_to_snippet(r) for r in rows]
 
+def get_enabled_snippets() -> List[Snippet]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM snippets WHERE enabled = 1 ORDER BY shortcut ASC")
+        rows = cursor.fetchall()
+        return [row_to_snippet(r) for r in rows]
+
 def get_snippet_by_shortcut(shortcut: str) -> Optional[Snippet]:
     with get_connection() as conn:
         cursor = conn.cursor()

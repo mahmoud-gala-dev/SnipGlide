@@ -10,13 +10,15 @@ from snipglide.services.ai import call_ai_completion
 from snipglide.utils.logger import logger
 
 class SnippetEditorView(ctk.CTkFrame):
-    def __init__(self, parent, toast_callback, settings_provider, **kwargs):
+    def __init__(self, parent, toast_callback, settings_provider, snippets_changed_callback=None, **kwargs):
         super().__init__(parent, fg_color="transparent", **kwargs)
         self.toast_callback = toast_callback
         self.settings_provider = settings_provider
+        self.snippets_changed_callback = snippets_changed_callback
         self.selected_index = None
         self.snippets_list = []
         self._refresh_job = None
+        self._preview_job = None
         self._groups_cache = []
         
         self.grid_columnconfigure(0, weight=1)
@@ -158,7 +160,7 @@ class SnippetEditorView(ctk.CTkFrame):
             apply_rtl_support(attr)
 
         # Bind live preview & keyboard shortcuts safely
-        self.editor.textbox.bind("<KeyRelease>", lambda _e: self._update_live_preview(), add="+")
+        self.editor.textbox.bind("<KeyRelease>", lambda _e: self._schedule_live_preview(), add="+")
         
         def bind_shortcuts():
             try:
@@ -171,7 +173,13 @@ class SnippetEditorView(ctk.CTkFrame):
 
         self.after(100, bind_shortcuts)
 
+    def _schedule_live_preview(self):
+        if self._preview_job:
+            self.after_cancel(self._preview_job)
+        self._preview_job = self.after(220, self._update_live_preview)
+
     def _update_live_preview(self):
+        self._preview_job = None
         try:
             from snipglide.engine.parser import parse_variables
             raw = self.editor.get_text()
@@ -415,6 +423,7 @@ class SnippetEditorView(ctk.CTkFrame):
                 
             self.refresh_list()
             self._new_snippet()
+            self._notify_snippets_changed()
         except Exception as e:
             self.toast_callback(f"Failed to save: {e}", error=True)
             
@@ -428,5 +437,10 @@ class SnippetEditorView(ctk.CTkFrame):
             self.toast_callback("Snippet deleted.")
             self.refresh_list()
             self._new_snippet()
+            self._notify_snippets_changed()
         except Exception as e:
             self.toast_callback(f"Delete failed: {e}", error=True)
+
+    def _notify_snippets_changed(self):
+        if self.snippets_changed_callback:
+            self.snippets_changed_callback()

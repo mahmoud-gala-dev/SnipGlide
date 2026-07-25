@@ -3,7 +3,7 @@ import time
 import re
 from typing import Optional, Callable
 from pynput import keyboard
-from snipglide.database.snippet_repo import get_all_snippets, increment_usage
+from snipglide.database.snippet_repo import get_enabled_snippets, increment_usage
 from snipglide.database.autocorrect_repo import get_all_corrections
 from snipglide.engine.parser import parse_variables, get_form_fields, replace_form_fields
 from snipglide.engine.window_tracker import get_active_window_info
@@ -24,6 +24,10 @@ class ExpansionEngine:
         self._last_snippets_fetch = 0
         self._last_corrections_fetch = 0
         self._cached_snippets = []
+        self._plain_snippets_by_last = {}
+        self._plain_snippets_by_last_lower = {}
+        self._regex_snippets = []
+        self._snippet_order = {}
         self._cached_corrections = {}
         self._min_plain_trigger_len = 1
         self._has_regex_snippets = False
@@ -100,8 +104,7 @@ class ExpansionEngine:
             max_len = int(settings.get("max_buffer", 250))
             self.buffer = self.buffer[-max_len:]
 
-            snippets = self._get_cached_snippets()
-            if not snippets:
+            if not self._get_cached_snippets():
                 return
             if not self._has_regex_snippets and len(self.buffer) < self._min_plain_trigger_len:
                 return
@@ -118,42 +121,60 @@ class ExpansionEngine:
                         self.buffer = ""
                         return
 
-            matched_snippet = None
-            matched_trigger = None
-
-            for s in snippets:
-                if not s.enabled:
-                    continue
-                
-                if s.app_filter and s.app_filter.lower() not in win_proc.lower():
-                    continue
-                if s.window_filter and s.window_filter.lower() not in win_title.lower():
-                    continue
-
-                if s.regex_enabled:
-                    match = re.search(s.shortcut + "$", self.buffer)
-                    if match:
-                        matched_snippet = s
-                        matched_trigger = match.group(0)
-                        break
-                else:
-                    case_sensitive = settings.get("case_sensitive", True)
-                    if case_sensitive:
-                        matched = self.buffer.endswith(s.shortcut)
-                    else:
-                        matched = self.buffer.lower().endswith(s.shortcut.lower())
-                        
-                    if matched:
-                        matched_snippet = s
-                        matched_trigger = s.shortcut
-                        break
-
-            if matched_snippet:
+            match_result = self._find_snippet_match(settings, win_title, win_proc)
+            if match_result:
+                matched_trigger, matched_snippet = match_result
                 self._expand(matched_trigger, matched_snippet)
 
         except Exception as e:
             logger.error(f"Listener error: {e}")
             self.buffer = ""
+
+    def _find_snippet_match(self, settings: dict, win_title: str, win_proc: str):
+        case_sensitive = settings.get("case_sensitive", True)
+        last_char = self.buffer[-1:] if self.buffer else ""
+        if case_sensitive:
+            candidates = self._plain_snippets_by_last.get(last_char, [])
+        else:
+            candidates = self._plain_snippets_by_last_lower.get(last_char.lower(), [])
+
+        best = None
+        best_order = float("inf")
+
+        for s in candidates:
+            if not self._passes_window_filters(s, win_title, win_proc):
+                continue
+            shortcut = s.shortcut
+            if not shortcut:
+                continue
+            if case_sensitive:
+                matched = self.buffer.endswith(shortcut)
+            else:
+                matched = self.buffer.lower().endswith(shortcut.lower())
+            if matched:
+                order = self._snippet_order.get(id(s), best_order)
+                if order < best_order:
+                    best = (shortcut, s)
+                    best_order = order
+
+        for pattern, s in self._regex_snippets:
+            if not self._passes_window_filters(s, win_title, win_proc):
+                continue
+            match = pattern.search(self.buffer)
+            if match:
+                order = self._snippet_order.get(id(s), best_order)
+                if order < best_order:
+                    best = (match.group(0), s)
+                    best_order = order
+
+        return best
+
+    def _passes_window_filters(self, s, win_title: str, win_proc: str) -> bool:
+        if s.app_filter and s.app_filter.lower() not in win_proc.lower():
+            return False
+        if s.window_filter and s.window_filter.lower() not in win_title.lower():
+            return False
+        return True
             
     def _get_cached_window_info(self):
         """Get window info with caching to reduce system calls."""
@@ -209,14 +230,39 @@ class ExpansionEngine:
         now = time.time()
         if now - self._last_snippets_fetch > self._cache_ttl:
             try:
-                self._cached_snippets = sorted(get_all_snippets(), key=lambda x: len(x.shortcut), reverse=True)
-                plain_lengths = [len(s.shortcut) for s in self._cached_snippets if not s.regex_enabled and s.shortcut]
-                self._min_plain_trigger_len = min(plain_lengths) if plain_lengths else 1
-                self._has_regex_snippets = any(s.regex_enabled for s in self._cached_snippets)
+                self._cached_snippets = sorted(get_enabled_snippets(), key=lambda x: len(x.shortcut), reverse=True)
+                self._rebuild_snippet_indexes()
             except Exception as e:
                 logger.error(f"Failed to fetch snippets: {e}")
             self._last_snippets_fetch = now
         return self._cached_snippets
+
+    def _rebuild_snippet_indexes(self):
+        self._plain_snippets_by_last = {}
+        self._plain_snippets_by_last_lower = {}
+        self._regex_snippets = []
+        self._snippet_order = {}
+        plain_lengths = []
+
+        for index, snippet in enumerate(self._cached_snippets):
+            self._snippet_order[id(snippet)] = index
+            shortcut = snippet.shortcut or ""
+            if not shortcut:
+                continue
+
+            if snippet.regex_enabled:
+                try:
+                    self._regex_snippets.append((re.compile(shortcut + "$"), snippet))
+                except re.error as e:
+                    logger.warning(f"Invalid regex snippet ignored: {shortcut} ({e})")
+                continue
+
+            plain_lengths.append(len(shortcut))
+            self._plain_snippets_by_last.setdefault(shortcut[-1], []).append(snippet)
+            self._plain_snippets_by_last_lower.setdefault(shortcut[-1].lower(), []).append(snippet)
+
+        self._min_plain_trigger_len = min(plain_lengths) if plain_lengths else 1
+        self._has_regex_snippets = bool(self._regex_snippets)
 
     def _get_cached_corrections(self):
         now = time.time()
@@ -238,13 +284,15 @@ class ExpansionEngine:
         corrections = self._get_cached_corrections()
         if not corrections:
             return
-            
-        for typo, correction in corrections.items():
-            pattern = r"(?:^|\s)" + re.escape(typo) + r"$"
-            match = re.search(pattern, self.buffer)
-            if match:
-                self._perform_autocorrect(typo, correction, trigger_key)
-                break
+
+        match = re.search(r"(?:^|\s)(\S+)$", self.buffer)
+        if not match:
+            return
+
+        typo = match.group(1).lower()
+        correction = corrections.get(typo)
+        if correction:
+            self._perform_autocorrect(typo, correction, trigger_key)
 
     def _perform_autocorrect(self, typo, correction, trigger_key):
         with self._lock:

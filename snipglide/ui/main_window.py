@@ -5,9 +5,10 @@ from snipglide.core.config import load_settings, save_settings, APP_NAME
 from tkinter import filedialog
 
 class MainWindow(ctk.CTk):
-    def __init__(self, engine_toggle_callback, **kwargs):
+    def __init__(self, engine_toggle_callback, snippets_changed_callback=None, **kwargs):
         super().__init__(**kwargs)
         self.engine_toggle_callback = engine_toggle_callback
+        self.snippets_changed_callback = snippets_changed_callback
         self.settings = load_settings()
         
         self.title(APP_NAME)
@@ -115,7 +116,12 @@ class MainWindow(ctk.CTk):
 
         self.pages = {
             "Dashboard": Dashboard(self.content_frame),
-            "Snippets": SnippetEditorView(self.content_frame, toast_callback=self.toast, settings_provider=self.get_settings),
+            "Snippets": SnippetEditorView(
+                self.content_frame,
+                toast_callback=self.toast,
+                settings_provider=self.get_settings,
+                snippets_changed_callback=self._notify_snippets_changed,
+            ),
             "Notes": NotesPage(self.content_frame, toast_callback=self.toast),
             "Search": SearchPage(
                 self.content_frame,
@@ -197,6 +203,11 @@ class MainWindow(ctk.CTk):
         if snippets_page:
             snippets_page.update_group_dropdowns()
             snippets_page.refresh_list()
+        self._notify_snippets_changed()
+
+    def _notify_snippets_changed(self):
+        if self.snippets_changed_callback:
+            self.snippets_changed_callback()
         
     def _trigger_new_snippet(self):
         self.switch_page("Snippets")

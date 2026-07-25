@@ -9,7 +9,7 @@ from snipglide.database.connection import initialize_database
 from snipglide.engine.listener import ExpansionEngine
 from snipglide.ui.main_window import MainWindow
 from snipglide.ui.dialogs.security_dialog import SecurityDialog
-from snipglide.services.security import hash_password
+from snipglide.services.security import verify_password
 from snipglide.services.clipboard_monitor import ClipboardMonitor
 from snipglide.utils.logger import logger
 
@@ -63,7 +63,10 @@ class AppCoordinator:
         return result_holder.get("result")
 
     def run(self):
-        self.window = MainWindow(engine_toggle_callback=self.toggle_engine_state)
+        self.window = MainWindow(
+            engine_toggle_callback=self.toggle_engine_state,
+            snippets_changed_callback=self.engine.invalidate_cache,
+        )
         self.clipboard_monitor.start()
         
         from pynput.keyboard import GlobalHotKeys
@@ -103,7 +106,7 @@ class AppCoordinator:
         
         def verify():
             dialog = SecurityDialog(self.window, title="Authentication Required")
-            if dialog.result and hash_password(dialog.result) == pwd_hash:
+            if dialog.result and verify_password(dialog.result, pwd_hash):
                 if self.settings.get("start_minimized", False):
                     self.window.withdraw()
                 else:
