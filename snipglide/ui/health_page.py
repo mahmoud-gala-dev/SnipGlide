@@ -1,6 +1,10 @@
 import customtkinter as ctk
 from tkinter import filedialog
+import os
+import json
+from datetime import datetime
 
+from snipglide.core.config import DATA_DIR
 from snipglide.services.maintenance import (
     export_full_package,
     export_sync_copy,
@@ -44,6 +48,8 @@ class HealthPage(ctk.CTkFrame):
         ctk.CTkButton(buttons, text="Refresh", command=self.refresh_health).pack(side="left", padx=(0, 6))
         ctk.CTkButton(buttons, text="Optimize DB", command=self._optimize_database).pack(side="left", padx=6)
         ctk.CTkButton(buttons, text="Optimize + Clear Clipboard", command=self._optimize_and_clear).pack(side="left", padx=6)
+        ctk.CTkButton(buttons, text="Open Data Folder", command=self._open_data_folder).pack(side="left", padx=6)
+        ctk.CTkButton(buttons, text="Export Report", command=self._export_health_report).pack(side="left", padx=6)
 
         package_buttons = ctk.CTkFrame(left, fg_color="transparent")
         package_buttons.grid(row=2, column=0, sticky="ew", padx=12, pady=(0, 12))
@@ -136,3 +142,27 @@ class HealthPage(ctk.CTkFrame):
             self.toast_callback(f"Sync package saved: {target}")
         except Exception as e:
             self.toast_callback(str(e), error=True)
+
+    def _open_data_folder(self):
+        try:
+            os.startfile(DATA_DIR)
+        except Exception as e:
+            self.toast_callback(f"Failed to open folder: {e}", error=True)
+
+    def _export_health_report(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            initialfile="snipglide_health_report.json",
+            filetypes=[("JSON files", "*.json")],
+        )
+        if not path:
+            return
+
+        report = get_health_report()
+        report["exported_at"] = datetime.now().isoformat()
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            self.toast_callback("Health report exported.")
+        except Exception as e:
+            self.toast_callback(f"Export failed: {e}", error=True)

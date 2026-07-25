@@ -6,7 +6,7 @@ def resource_path(relative: str) -> Path:
         return Path(sys._MEIPASS) / relative
     return Path(__file__).resolve().parent.parent.parent / relative
 
-def get_clipboard_text() -> str:
+def get_clipboard_text(max_chars: int = 10000) -> str:
     """Fast, thread-safe, native Windows clipboard text reader without GUI overhead."""
     import ctypes
     from ctypes import wintypes
@@ -25,12 +25,17 @@ def get_clipboard_text() -> str:
     kernel32.GlobalLock.restype = wintypes.LPVOID
     kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
     kernel32.GlobalUnlock.restype = wintypes.BOOL
+    kernel32.GlobalSize.argtypes = [wintypes.HGLOBAL]
+    kernel32.GlobalSize.restype = ctypes.c_size_t
 
     try:
         if not user32.OpenClipboard(None):
             return ""
         handle = user32.GetClipboardData(CF_UNICODETEXT)
         if not handle:
+            user32.CloseClipboard()
+            return ""
+        if kernel32.GlobalSize(handle) > (max_chars + 1) * 2:
             user32.CloseClipboard()
             return ""
         pointer = kernel32.GlobalLock(handle)
@@ -105,6 +110,8 @@ def apply_rtl_support(widget):
     import re
     import tkinter as tk
     target = getattr(widget, "_textbox", getattr(widget, "_entry", widget))
+    rtl_job = None
+    last_text = None
     
     from snipglide.core.config import get_arabic_font_family
     
@@ -113,6 +120,7 @@ def apply_rtl_support(widget):
         target.tag_configure("ltr_align", justify="left")
     
     def on_key_release(event=None):
+        nonlocal last_text
         try:
             if isinstance(target, tk.Entry):
                 text = target.get()
@@ -125,6 +133,9 @@ def apply_rtl_support(widget):
                     target.configure(justify=align, font=("Segoe UI", 13))
             elif isinstance(target, tk.Text):
                 text = target.get("1.0", "end-1c")
+                if text == last_text:
+                    return
+                last_text = text
                 has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
                 current_family = get_arabic_font_family()
                 if has_arabic:
@@ -137,8 +148,22 @@ def apply_rtl_support(widget):
                     target.tag_add("ltr_align", "1.0", "end")
         except Exception as e:
             pass
-            
-    target.bind("<KeyRelease>", on_key_release, add="+")
+
+    def run_scheduled_text_check():
+        nonlocal rtl_job
+        rtl_job = None
+        on_key_release()
+
+    def schedule_text_check(event=None):
+        nonlocal rtl_job
+        if isinstance(target, tk.Text):
+            if rtl_job:
+                target.after_cancel(rtl_job)
+            rtl_job = target.after(220, run_scheduled_text_check)
+        else:
+            on_key_release(event)
+
+    target.bind("<KeyRelease>", schedule_text_check, add="+")
     on_key_release(None)
 
 def download_and_load_arabic_font() -> str:

@@ -4,9 +4,8 @@ from snipglide.database.note_category_repo import add_category, delete_category,
 from snipglide.database.note_repo import (
     add_note,
     delete_note,
-    get_all_notes,
+    get_notes_for_list,
     get_note_by_id,
-    get_notes_by_category,
     toggle_pin,
     update_note,
 )
@@ -387,16 +386,13 @@ class NotesPage(ctk.CTkFrame):
         query = self.search_entry.get().strip().lower()
         selected_cat = self.category_filter.get()
         cat_id = self.category_display_to_id.get(selected_cat)
-        notes = get_notes_by_category(cat_id) if cat_id else get_all_notes()
-
-        if query:
-            notes = [n for n in notes if query in n.title.lower() or query in n.content.lower()]
+        max_visible = 150
+        notes = get_notes_for_list(query=query, category_id=cat_id, limit=max_visible + 1)
 
         if not notes:
             ctk.CTkLabel(self.scroll_list, text="No notes found.", text_color="gray").pack(pady=20)
             return
 
-        max_visible = 150
         hidden_count = max(0, len(notes) - max_visible)
         for note in notes[:max_visible]:
             cat_display = self.category_id_to_display.get(note.category_id, "Uncategorized")
@@ -413,7 +409,7 @@ class NotesPage(ctk.CTkFrame):
                 fg_color=("gray88", "gray18"),
                 hover_color=("gray80", "gray25"),
                 text_color=("black", "white"),
-                command=lambda n=note: self._select_note(n),
+                command=lambda note_id=note.id: self._select_note_by_id(note_id),
             )
             btn.pack(fill="x", pady=4)
 
@@ -423,6 +419,11 @@ class NotesPage(ctk.CTkFrame):
                 text=f"{hidden_count} more notes hidden. Refine search to narrow the list.",
                 text_color="gray",
             ).pack(pady=10)
+
+    def _select_note_by_id(self, note_id: int):
+        note = get_note_by_id(note_id)
+        if note:
+            self._select_note(note)
 
     def _select_note(self, note: Note):
         if self._autosave_job:

@@ -11,7 +11,7 @@ def search_all(query: str, limit: int = 40) -> list[dict]:
 
         cursor.execute(
             """
-            SELECT 'Snippet' AS kind, shortcut AS title, replacement AS body
+            SELECT 'Snippet' AS kind, CAST(id AS TEXT) AS ref, shortcut AS title, substr(replacement, 1, 500) AS body
             FROM snippets
             WHERE shortcut LIKE ? OR description LIKE ? OR replacement LIKE ?
             ORDER BY favorite DESC, shortcut ASC
@@ -23,7 +23,7 @@ def search_all(query: str, limit: int = 40) -> list[dict]:
 
         cursor.execute(
             """
-            SELECT 'Note' AS kind, title, content AS body
+            SELECT 'Note' AS kind, CAST(id AS TEXT) AS ref, title, substr(content, 1, 500) AS body
             FROM notes
             WHERE title LIKE ? OR content LIKE ?
             ORDER BY pinned DESC, modified_date DESC
@@ -35,7 +35,7 @@ def search_all(query: str, limit: int = 40) -> list[dict]:
 
         cursor.execute(
             """
-            SELECT 'Clipboard' AS kind, 'Clipboard entry' AS title, content AS body
+            SELECT 'Clipboard' AS kind, CAST(id AS TEXT) AS ref, 'Clipboard entry' AS title, substr(content, 1, 500) AS body
             FROM clipboard_history
             WHERE content LIKE ?
             ORDER BY copied_at DESC, id DESC
@@ -46,3 +46,25 @@ def search_all(query: str, limit: int = 40) -> list[dict]:
         results.extend(dict(row) for row in cursor.fetchall())
 
     return results[:limit]
+
+
+def get_search_result_body(kind: str, ref: str) -> str:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+
+        if kind == "Snippet":
+            cursor.execute("SELECT replacement FROM snippets WHERE id = ?", (ref,))
+            row = cursor.fetchone()
+            return row["replacement"] if row else ""
+
+        if kind == "Note":
+            cursor.execute("SELECT content FROM notes WHERE id = ?", (ref,))
+            row = cursor.fetchone()
+            return row["content"] if row else ""
+
+        if kind == "Clipboard":
+            cursor.execute("SELECT content FROM clipboard_history WHERE id = ?", (ref,))
+            row = cursor.fetchone()
+            return row["content"] if row else ""
+
+    return ""

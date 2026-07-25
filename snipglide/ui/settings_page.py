@@ -63,6 +63,31 @@ class SettingsPage(ctk.CTkFrame):
         self.max_buffer_entry = ctk.CTkEntry(tab, width=200)
         self.max_buffer_entry.pack(pady=2, anchor="w", padx=20)
         self.max_buffer_entry.insert(0, str(self.settings_dict.get("max_buffer", 250)))
+
+        ctk.CTkLabel(tab, text="Clipboard History Controls:", font=ctk.CTkFont(weight="bold")).pack(pady=(15, 5), anchor="w", padx=20)
+
+        self.clipboard_history_switch = ctk.CTkSwitch(tab, text="Save clipboard text history")
+        self.clipboard_history_switch.pack(pady=6, anchor="w", padx=20)
+        if self.settings_dict.get("clipboard_history_enabled", True):
+            self.clipboard_history_switch.select()
+
+        self.clipboard_private_switch = ctk.CTkSwitch(tab, text="Pause clipboard capture in sensitive or blacklisted apps")
+        self.clipboard_private_switch.pack(pady=6, anchor="w", padx=20)
+        if self.settings_dict.get("clipboard_skip_private_windows", True):
+            self.clipboard_private_switch.select()
+
+        clipboard_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        clipboard_frame.pack(fill="x", pady=4, padx=20)
+
+        ctk.CTkLabel(clipboard_frame, text="Poll seconds:").pack(side="left", padx=(0, 6))
+        self.clipboard_interval_entry = ctk.CTkEntry(clipboard_frame, width=70)
+        self.clipboard_interval_entry.pack(side="left", padx=(0, 14))
+        self.clipboard_interval_entry.insert(0, str(self.settings_dict.get("clipboard_poll_interval", 3.0)))
+
+        ctk.CTkLabel(clipboard_frame, text="Max chars:").pack(side="left", padx=(0, 6))
+        self.clipboard_max_entry = ctk.CTkEntry(clipboard_frame, width=90)
+        self.clipboard_max_entry.pack(side="left")
+        self.clipboard_max_entry.insert(0, str(self.settings_dict.get("clipboard_max_chars", 10000)))
         
         ctk.CTkLabel(tab, text="Color Theme Mode:").pack(pady=(12, 2), anchor="w", padx=20)
         self.theme_var = ctk.StringVar(value=self.settings_dict.get("theme", "System"))
@@ -172,6 +197,10 @@ class SettingsPage(ctk.CTkFrame):
     def _save_all(self):
         self.settings_dict["start_minimized"] = bool(self.start_min_switch.get())
         self.settings_dict["max_buffer"] = int(self.max_buffer_entry.get().strip() or "250")
+        self.settings_dict["clipboard_history_enabled"] = bool(self.clipboard_history_switch.get())
+        self.settings_dict["clipboard_skip_private_windows"] = bool(self.clipboard_private_switch.get())
+        self.settings_dict["clipboard_poll_interval"] = self._bounded_float(self.clipboard_interval_entry.get(), 3.0, 1.0, 60.0)
+        self.settings_dict["clipboard_max_chars"] = self._bounded_int(self.clipboard_max_entry.get(), 10000, 100, 100000)
 
         self.settings_dict["play_sound"] = bool(self.play_sound_switch.get())
 
@@ -198,6 +227,20 @@ class SettingsPage(ctk.CTkFrame):
         self.settings_dict["ai_temperature"] = float(self.ai_temp_var.get())
 
         self.save_callback()
+
+    def _bounded_int(self, value: str, default: int, minimum: int, maximum: int) -> int:
+        try:
+            parsed = int(float(value.strip()))
+        except Exception:
+            parsed = default
+        return min(max(parsed, minimum), maximum)
+
+    def _bounded_float(self, value: str, default: float, minimum: float, maximum: float) -> float:
+        try:
+            parsed = float(value.strip())
+        except Exception:
+            parsed = default
+        return min(max(parsed, minimum), maximum)
 
     def _test_api_connection(self):
         api_key = self.ai_key_entry.get().strip()

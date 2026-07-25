@@ -26,6 +26,38 @@ def get_notes_by_category(cat_id: int) -> List[Note]:
         rows = cursor.fetchall()
         return [Note(**dict(row)) for row in rows]
 
+def get_notes_for_list(query: str = "", category_id: int | None = None, limit: int = 150) -> List[Note]:
+    clauses = []
+    params = []
+
+    if category_id is not None:
+        clauses.append("category_id = ?")
+        params.append(category_id)
+
+    if query:
+        term = f"%{query}%"
+        clauses.append("(title LIKE ? OR content LIKE ?)")
+        params.extend([term, term])
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT id, title, substr(content, 1, 500) AS content, category_id,
+                   created_date, modified_date, color, pinned
+            FROM notes
+            {where_sql}
+            ORDER BY pinned DESC, modified_date DESC
+            LIMIT ?
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [Note(**dict(row)) for row in rows]
+
 def get_note_by_id(note_id: int) -> Optional[Note]:
     with get_connection() as conn:
         cursor = conn.cursor()

@@ -2,7 +2,14 @@ import customtkinter as ctk
 import threading
 from snipglide.models.snippet import Snippet
 from snipglide.models.group import Group
-from snipglide.database.snippet_repo import get_all_snippets, get_snippet_by_shortcut, add_snippet, update_snippet, delete_snippet
+from snipglide.database.snippet_repo import (
+    get_snippet_by_id,
+    get_snippet_by_shortcut,
+    get_snippets_for_list,
+    add_snippet,
+    update_snippet,
+    delete_snippet,
+)
 from snipglide.database.group_repo import get_all_groups, add_group
 from snipglide.ui.widgets.code_editor import CodeEditor
 from snipglide.ui.dialogs.group_dialog import GroupDialog
@@ -279,32 +286,21 @@ class SnippetEditorView(ctk.CTkFrame):
             parts = selected_filter.split(" ", 1)
             clean_filter = parts[1] if len(parts) > 1 else selected_filter
             
-        snippets = get_all_snippets()
-        self.snippets_list = []
-        
         # Resolve group names for mapping
         groups = self._groups_cache or get_all_groups()
-        groups_map = {g.id: g.name for g in groups}
         groups_icons = {g.id: g.icon for g in groups}
-        
-        visible = []
-        for s in snippets:
-            s_group = groups_map.get(s.group_id, "General")
-            if clean_filter != "All Groups" and s_group != clean_filter:
-                continue
-                
-            text = f"{s.shortcut} {s.description} {s.replacement}".lower()
-            if not query or query in text:
-                visible.append(s)
+        selected_group_id = None
+        if clean_filter != "All Groups":
+            selected_group_id = next((g.id for g in groups if g.name == clean_filter), None)
 
-        # Pin favorites to top
-        visible.sort(key=lambda s: (not s.favorite, s.shortcut.lower()))
+        max_visible = 150
+        visible = get_snippets_for_list(query=query, group_id=selected_group_id, limit=max_visible + 1)
+        self.snippets_list = visible[:max_visible]
                 
         if not visible:
             ctk.CTkLabel(self.scroll_list, text="No snippets match.", text_color="gray").pack(pady=20)
             return
             
-        max_visible = 150
         hidden_count = max(0, len(visible) - max_visible)
         for i, s in enumerate(visible[:max_visible]):
             icon = groups_icons.get(s.group_id, "📁")
@@ -322,7 +318,7 @@ class SnippetEditorView(ctk.CTkFrame):
                 fg_color=("gray88", "gray18"),
                 hover_color=("gray80", "gray25"),
                 text_color=("black", "white"),
-                command=lambda snippet=s: self._select_snippet(snippet)
+                command=lambda snippet_id=s.id: self._select_snippet_by_id(snippet_id)
             )
             btn.pack(fill="x", pady=4)
 
@@ -332,6 +328,11 @@ class SnippetEditorView(ctk.CTkFrame):
                 text=f"{hidden_count} more results hidden. Refine search to narrow the list.",
                 text_color="gray",
             ).pack(pady=10)
+
+    def _select_snippet_by_id(self, snippet_id: int):
+        snippet = get_snippet_by_id(snippet_id)
+        if snippet:
+            self._select_snippet(snippet)
             
     def _select_snippet(self, s: Snippet):
         self.selected_snippet_id = s.id

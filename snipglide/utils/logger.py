@@ -1,4 +1,5 @@
 import logging
+from logging.handlers import RotatingFileHandler
 from snipglide.core.config import DATA_DIR
 
 def setup_logger():
@@ -7,7 +8,7 @@ def setup_logger():
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[
-            logging.FileHandler(log_file, encoding="utf-8"),
+            RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=3, encoding="utf-8"),
             logging.StreamHandler()
         ]
     )

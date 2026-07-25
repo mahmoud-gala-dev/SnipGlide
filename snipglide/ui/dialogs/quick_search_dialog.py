@@ -2,12 +2,15 @@ import tkinter as tk
 import customtkinter as ctk
 import time
 import threading
-from snipglide.database.snippet_repo import get_all_snippets, increment_usage
+from snipglide.database.snippet_repo import get_snippet_by_id, get_snippets_for_list, increment_usage
 
 class QuickSearchDialog(ctk.CTkToplevel):
+    MAX_VISIBLE_RESULTS = 80
+
     def __init__(self, parent, parse_callback, **kwargs):
         super().__init__(parent, **kwargs)
         self.parse_callback = parse_callback
+        self._search_job = None
         
         # Borderless, floating window
         self.overrideredirect(True)
@@ -58,8 +61,7 @@ class QuickSearchDialog(ctk.CTkToplevel):
         self.bind("<FocusOut>", self._on_focus_out)
         
         # Initial load
-        self.all_snippets = get_all_snippets()
-        self.filtered = list(self.all_snippets)
+        self.filtered = get_snippets_for_list(limit=self.MAX_VISIBLE_RESULTS + 1)
         self._render_list()
         
         # Force focus
@@ -76,14 +78,14 @@ class QuickSearchDialog(ctk.CTkToplevel):
         self.destroy()
 
     def _on_search_change(self, event):
+        if self._search_job:
+            self.after_cancel(self._search_job)
+        self._search_job = self.after(120, self._apply_filter)
+
+    def _apply_filter(self):
+        self._search_job = None
         query = self.search_var.get().strip().lower()
-        if not query:
-            self.filtered = list(self.all_snippets)
-        else:
-            self.filtered = [
-                s for s in self.all_snippets 
-                if query in s.shortcut.lower() or query in (s.description or "").lower() or query in s.replacement.lower()
-            ]
+        self.filtered = get_snippets_for_list(query=query, limit=self.MAX_VISIBLE_RESULTS + 1)
         self._render_list()
 
     def _render_list(self):
@@ -94,7 +96,8 @@ class QuickSearchDialog(ctk.CTkToplevel):
             ctk.CTkLabel(self.scroll, text="No matching snippets.", text_color="gray").pack(pady=20)
             return
             
-        for i, snippet in enumerate(self.filtered):
+        visible = self.filtered[:self.MAX_VISIBLE_RESULTS]
+        for i, snippet in enumerate(visible):
             bg = ("gray80", "gray25") if i == 0 else "transparent"
             
             row = ctk.CTkFrame(self.scroll, fg_color=bg, height=36)
@@ -109,11 +112,27 @@ class QuickSearchDialog(ctk.CTkToplevel):
             desc_lbl.pack(side="left", padx=5)
             
             for widget in [row, shortcut_lbl, desc_lbl]:
-                widget.bind("<Button-1>", lambda e, s=snippet: self._select_snippet(s))
+                widget.bind("<Button-1>", lambda e, snippet_id=snippet.id: self._select_snippet_by_id(snippet_id))
+
+        hidden_count = len(self.filtered) - len(visible)
+        if hidden_count > 0:
+            ctk.CTkLabel(
+                self.scroll,
+                text=f"{hidden_count} more results hidden. Keep typing to narrow the list.",
+                text_color="gray",
+            ).pack(pady=8)
 
     def _on_enter_press(self, event):
+        if self._search_job:
+            self.after_cancel(self._search_job)
+            self._apply_filter()
         if self.filtered:
-            self._select_snippet(self.filtered[0])
+            self._select_snippet_by_id(self.filtered[0].id)
+
+    def _select_snippet_by_id(self, snippet_id: int):
+        snippet = get_snippet_by_id(snippet_id)
+        if snippet:
+            self._select_snippet(snippet)
 
     def _select_snippet(self, snippet):
         self.destroy()

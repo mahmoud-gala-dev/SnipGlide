@@ -114,6 +114,7 @@ def initialize_database():
             )
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_usage_history_used ON usage_history (used_at)")
+        cursor.execute("DELETE FROM usage_history WHERE used_at < date('now', '-365 days')")
         
         # Create note categories table
         cursor.execute("""

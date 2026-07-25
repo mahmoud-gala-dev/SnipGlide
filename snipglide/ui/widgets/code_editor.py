@@ -104,6 +104,12 @@ class CodeEditor(ctk.CTkFrame):
                 self.textbox.tag_remove("rtl", "1.0", "end")
                 self.textbox.tag_remove("ltr", "1.0", "end")
                 total_lines = int(self.textbox.index("end-1c").split(".")[0])
+                if total_lines > 1000:
+                    any_arabic = bool(re.search(r"[\u0600-\u06FF]", current_text))
+                    tag = "rtl" if any_arabic else "ltr"
+                    self.textbox.tag_add(tag, "1.0", "end")
+                    return any_arabic
+
                 any_arabic = False
                 for lineno in range(1, total_lines + 1):
                     line_text = self.textbox.get(f"{lineno}.0", f"{lineno}.end")
@@ -239,11 +245,9 @@ class CodeEditor(ctk.CTkFrame):
             return
 
         code = self.get_text()
-        tokens = list(lex(code, lexer))
-
         line = 1
         column = 0
-        for token_type, value in tokens:
+        for token_type, value in lex(code, lexer):
             start_idx = f"{line}.{column}"
             newlines = value.count("\n")
             if newlines > 0:

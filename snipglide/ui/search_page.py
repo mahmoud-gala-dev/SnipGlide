@@ -1,6 +1,6 @@
 import customtkinter as ctk
 
-from snipglide.database.search_repo import search_all
+from snipglide.database.search_repo import get_search_result_body, search_all
 
 
 class SearchPage(ctk.CTkFrame):
@@ -55,7 +55,12 @@ class SearchPage(ctk.CTkFrame):
             return
 
         for item in results:
-            self._create_result_row(item["kind"], item["title"], item["body"], lambda text=item["body"]: self._copy_text(text))
+            self._create_result_row(
+                item["kind"],
+                item["title"],
+                item["body"],
+                lambda kind=item["kind"], ref=item["ref"]: self._copy_result_body(kind, ref),
+            )
 
     def _create_result_row(self, kind: str, title: str, body: str, action):
         row = ctk.CTkFrame(self.results_frame, fg_color=("gray90", "gray15"))
@@ -80,6 +85,13 @@ class SearchPage(ctk.CTkFrame):
         self.clipboard_clear()
         self.clipboard_append(text)
         self.toast_callback("Copied to clipboard.")
+
+    def _copy_result_body(self, kind: str, ref: str):
+        text = get_search_result_body(kind, ref)
+        if text:
+            self._copy_text(text)
+        else:
+            self.toast_callback("Result no longer exists.", error=True)
 
     def _show_empty(self, message: str):
         ctk.CTkLabel(self.results_frame, text=message, text_color="gray").pack(pady=40)

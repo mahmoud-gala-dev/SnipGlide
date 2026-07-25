@@ -2,12 +2,21 @@ import json
 import sqlite3
 import openpyxl
 import yaml
+from pathlib import Path
 from snipglide.database.connection import get_connection
 from snipglide.database.snippet_repo import add_snippet, get_snippet_by_shortcut
 from snipglide.database.group_repo import get_all_groups, add_group
 from snipglide.models.snippet import Snippet
 from snipglide.models.group import Group
 from snipglide.utils.logger import logger
+
+MAX_IMPORT_FILE_BYTES = 25 * 1024 * 1024
+
+def _is_reasonable_import_file(file_path: str) -> bool:
+    try:
+        return Path(file_path).stat().st_size <= MAX_IMPORT_FILE_BYTES
+    except OSError:
+        return False
 
 def export_backup(file_path: str) -> bool:
     try:
@@ -41,10 +50,13 @@ def export_backup(file_path: str) -> bool:
 
 def import_backup(file_path: str) -> bool:
     try:
+        if not _is_reasonable_import_file(file_path):
+            logger.error("Backup import rejected: file is too large.")
+            return False
         with open(file_path, "r", encoding="utf-8") as f:
             backup_data = json.load(f)
             
-        if "snippets" not in backup_data or "groups" not in backup_data:
+        if not isinstance(backup_data, dict) or "snippets" not in backup_data or "groups" not in backup_data:
             logger.error("Invalid backup file: missing snippets or groups schema.")
             return False
             
@@ -57,12 +69,16 @@ def import_backup(file_path: str) -> bool:
             cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('snippets', 'groups', 'autocorrect')")
             
             for g in backup_data.get("groups", []):
+                if not isinstance(g, dict):
+                    continue
                 cursor.execute("""
                     INSERT INTO groups (id, name, description) 
                     VALUES (?, ?, ?)
                 """, (g.get("id"), g.get("name"), g.get("description")))
                 
             for s in backup_data.get("snippets", []):
+                if not isinstance(s, dict):
+                    continue
                 cursor.execute("""
                     INSERT INTO snippets (
                         id, shortcut, replacement, group_id, tags, description, language,
@@ -79,6 +95,8 @@ def import_backup(file_path: str) -> bool:
                 ))
                 
             for a in backup_data.get("autocorrect", []):
+                if not isinstance(a, dict):
+                    continue
                 cursor.execute("""
                     INSERT INTO autocorrect (typo, correction) 
                     VALUES (?, ?)
@@ -108,18 +126,20 @@ def export_to_excel(snippets: list, file_path: str):
     wb.save(file_path)
 
 def import_from_excel(file_path: str) -> int:
-    wb = openpyxl.load_workbook(file_path)
+    if not _is_reasonable_import_file(file_path):
+        return 0
+    wb = openpyxl.load_workbook(file_path, read_only=True, data_only=True)
     ws = wb.active
     count = 0
     
     groups = {g.name.lower(): g.id for g in get_all_groups()}
-    rows = list(ws.iter_rows(values_only=True))
-    
-    if len(rows) > 1:
-        for r in rows[1:]:
+    try:
+        rows = ws.iter_rows(values_only=True)
+        next(rows, None)
+        for r in rows:
             if not r or len(r) < 2 or not r[0] or not r[1]:
                 continue
-            shortcut, replacement = r[0], r[1]
+            shortcut, replacement = str(r[0]), str(r[1])
             group_name = r[2] if len(r) > 2 else "General"
             tags_str = r[3] if len(r) > 3 else ""
             description = r[4] if len(r) > 4 else ""
@@ -151,6 +171,8 @@ def import_from_excel(file_path: str) -> int:
             )
             add_snippet(snippet)
             count += 1
+    finally:
+        wb.close()
     return count
 
 # yaml export/import
@@ -172,6 +194,8 @@ def export_to_yaml(snippets: list, file_path: str):
         yaml.dump(data, f, allow_unicode=True)
 
 def import_from_yaml(file_path: str) -> int:
+    if not _is_reasonable_import_file(file_path):
+        return 0
     with open(file_path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
     if not isinstance(data, list):
@@ -180,12 +204,14 @@ def import_from_yaml(file_path: str) -> int:
     groups = {g.name.lower(): g.id for g in get_all_groups()}
     count = 0
     for item in data:
+        if not isinstance(item, dict):
+            continue
         shortcut = item.get("shortcut")
         replacement = item.get("replacement")
         if not shortcut or not replacement:
             continue
             
-        g_name = item.get("group", "General")
+        g_name = str(item.get("group", "General") or "General")
         if g_name.lower() not in groups:
             g_id = add_group(Group(name=g_name, description="Imported via YAML"))
             groups[g_name.lower()] = g_id
@@ -229,6 +255,8 @@ def export_to_json(snippets: list, file_path: str):
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 def import_from_json(file_path: str) -> int:
+    if not _is_reasonable_import_file(file_path):
+        return 0
     with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, list):
@@ -237,12 +265,14 @@ def import_from_json(file_path: str) -> int:
     groups = {g.name.lower(): g.id for g in get_all_groups()}
     count = 0
     for item in data:
+        if not isinstance(item, dict):
+            continue
         shortcut = item.get("shortcut")
         replacement = item.get("replacement")
         if not shortcut or not replacement:
             continue
             
-        g_name = item.get("group", "General")
+        g_name = str(item.get("group", "General") or "General")
         if g_name.lower() not in groups:
             g_id = add_group(Group(name=g_name, description="Imported via JSON"))
             groups[g_name.lower()] = g_id

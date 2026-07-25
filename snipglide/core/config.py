@@ -30,6 +30,10 @@ DEFAULT_SETTINGS = {
     "ui_zoom": 1.0,
     "sidebar_font_size": 13,
     "sidebar_direction": "ltr",
+    "clipboard_history_enabled": True,
+    "clipboard_poll_interval": 3.0,
+    "clipboard_max_chars": 10000,
+    "clipboard_skip_private_windows": True,
 }
 
 def load_settings() -> dict:

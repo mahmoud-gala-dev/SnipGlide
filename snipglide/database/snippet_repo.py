@@ -50,6 +50,49 @@ def get_snippet_by_shortcut(shortcut: str) -> Optional[Snippet]:
             return row_to_snippet(row)
         return None
 
+def get_snippet_by_id(snippet_id: int) -> Optional[Snippet]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM snippets WHERE id = ?", (snippet_id,))
+        row = cursor.fetchone()
+        if row:
+            return row_to_snippet(row)
+        return None
+
+def get_snippets_for_list(query: str = "", group_id: int | None = None, limit: int = 150) -> List[Snippet]:
+    clauses = []
+    params = []
+
+    if group_id is not None:
+        clauses.append("group_id = ?")
+        params.append(group_id)
+
+    if query:
+        term = f"%{query}%"
+        clauses.append("(shortcut LIKE ? OR description LIKE ? OR replacement LIKE ?)")
+        params.extend([term, term, term])
+
+    where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            f"""
+            SELECT id, shortcut, substr(replacement, 1, 500) AS replacement,
+                   group_id, tags, description, language, enabled, favorite,
+                   usage_counter, created_date, modified_date, hotkey,
+                   regex_enabled, app_filter, window_filter, notes
+            FROM snippets
+            {where_sql}
+            ORDER BY favorite DESC, lower(shortcut) ASC
+            LIMIT ?
+            """,
+            params,
+        )
+        rows = cursor.fetchall()
+        return [row_to_snippet(r) for r in rows]
+
 def add_snippet(snippet: Snippet) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()

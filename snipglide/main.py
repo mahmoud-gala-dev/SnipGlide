@@ -41,6 +41,8 @@ class AppCoordinator:
         
         self.window = None
         self.tray_icon = None
+        self.hotkeys = None
+        self._hotkey_refresh_job = None
         self.engine.start()
         
     def get_current_settings(self) -> dict:
@@ -65,18 +67,11 @@ class AppCoordinator:
     def run(self):
         self.window = MainWindow(
             engine_toggle_callback=self.toggle_engine_state,
-            snippets_changed_callback=self.engine.invalidate_cache,
+            snippets_changed_callback=self._on_snippets_changed,
         )
         self.clipboard_monitor.start()
-        
-        from pynput.keyboard import GlobalHotKeys
-        hotkey_map = {
-            '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
-            '<ctrl>+<alt>+<shift>+s': lambda: self.window.after(0, self.toggle_window_visibility),
-        }
-        hotkey_map.update(self._load_snippet_hotkeys())
-        self.hotkeys = GlobalHotKeys(hotkey_map)
-        self.hotkeys.start()
+
+        self._start_hotkeys()
         
         if self.settings.get("master_password_enabled", False) and self.settings.get("lock_on_startup", False):
             self.window.withdraw()
@@ -92,13 +87,47 @@ class AppCoordinator:
         
         self.window.mainloop()
 
+    def _build_hotkey_map(self):
+        hotkey_map = {
+            '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
+            '<ctrl>+<alt>+<shift>+s': lambda: self.window.after(0, self.toggle_window_visibility),
+        }
+        hotkey_map.update(self._load_snippet_hotkeys())
+        return hotkey_map
+
+    def _start_hotkeys(self):
+        from pynput.keyboard import GlobalHotKeys
+
+        self.hotkeys = GlobalHotKeys(self._build_hotkey_map())
+        self.hotkeys.start()
+
+    def _restart_hotkeys(self):
+        try:
+            if self.hotkeys:
+                self.hotkeys.stop()
+        except Exception as e:
+            logger.error(f"Failed to stop hotkeys: {e}")
+        self._start_hotkeys()
+
+    def _on_snippets_changed(self):
+        self.engine.invalidate_cache()
+        if self.window:
+            if self._hotkey_refresh_job:
+                self.window.after_cancel(self._hotkey_refresh_job)
+            self._hotkey_refresh_job = self.window.after(250, self._refresh_hotkeys_after_change)
+
+    def _refresh_hotkeys_after_change(self):
+        self._hotkey_refresh_job = None
+        self._restart_hotkeys()
+
     def show_quick_search(self):
         if not self.window:
             return
         from snipglide.ui.dialogs.quick_search_dialog import QuickSearchDialog
+        from snipglide.engine.parser import parse_variables
         dialog = QuickSearchDialog(
             self.window,
-            parse_callback=self.engine.parser.parse_variables
+            parse_callback=parse_variables
         )
         
     def _prompt_startup_lock(self):

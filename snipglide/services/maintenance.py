@@ -1,6 +1,7 @@
 import json
 import shutil
 import sqlite3
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +19,8 @@ PACKAGE_TABLES = [
     "note_settings",
     "clipboard_history",
 ]
+
+MAX_PACKAGE_IMPORT_BYTES = 50 * 1024 * 1024
 
 
 def get_health_report() -> dict:
@@ -83,7 +86,12 @@ def export_full_package(file_path: str) -> bool:
 
 def import_full_package(file_path: str) -> bool:
     try:
-        package = json.loads(Path(file_path).read_text(encoding="utf-8"))
+        package_path = Path(file_path)
+        if package_path.stat().st_size > MAX_PACKAGE_IMPORT_BYTES:
+            logger.error("Full package import rejected: file is too large.")
+            return False
+
+        package = json.loads(package_path.read_text(encoding="utf-8"))
         tables = package.get("tables", {})
         if not isinstance(tables, dict) or "snippets" not in tables:
             return False
@@ -92,6 +100,7 @@ def import_full_package(file_path: str) -> bool:
 
         with get_connection() as conn:
             cursor = conn.cursor()
+            allowed_columns = _table_columns(cursor)
             for table in reversed(PACKAGE_TABLES):
                 cursor.execute(f"DELETE FROM {table}")
 
@@ -99,12 +108,16 @@ def import_full_package(file_path: str) -> bool:
                 rows = tables.get(table, [])
                 if not rows:
                     continue
-                columns = list(rows[0].keys())
+                if not isinstance(rows, list) or not isinstance(rows[0], dict):
+                    continue
+                columns = [column for column in rows[0].keys() if column in allowed_columns.get(table, set())]
+                if not columns:
+                    continue
                 placeholders = ", ".join("?" for _ in columns)
                 columns_sql = ", ".join(columns)
                 cursor.executemany(
                     f"INSERT OR REPLACE INTO {table} ({columns_sql}) VALUES ({placeholders})",
-                    [[row.get(column) for column in columns] for row in rows],
+                    ([row.get(column) for column in columns] for row in rows if isinstance(row, dict)),
                 )
             conn.commit()
 
@@ -132,8 +145,8 @@ def read_log_tail(max_lines: int = 200) -> str:
     log_file = DB_FILE.parent / "snipglide.log"
     if not log_file.exists():
         return "No log file found."
-    lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
-    return "\n".join(lines[-max_lines:])
+    with log_file.open("r", encoding="utf-8", errors="replace") as f:
+        return "\n".join(deque((line.rstrip("\n") for line in f), maxlen=max_lines))
 
 
 def _file_size_kb(path: Path) -> int:
@@ -141,14 +154,22 @@ def _file_size_kb(path: Path) -> int:
 
 
 def _last_backup_name() -> str:
-    backups = sorted(BACKUP_DIR.glob("*"), key=lambda p: p.stat().st_mtime, reverse=True)
-    return backups[0].name if backups else "None"
+    latest = max(BACKUP_DIR.glob("*"), key=lambda p: p.stat().st_mtime, default=None)
+    return latest.name if latest else "None"
 
 
 def _read_json(path: Path) -> dict:
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _table_columns(cursor) -> dict[str, set[str]]:
+    columns = {}
+    for table in PACKAGE_TABLES:
+        cursor.execute(f"PRAGMA table_info({table})")
+        columns[table] = {row["name"] for row in cursor.fetchall()}
+    return columns
 
 
 def _backup_current_files():
