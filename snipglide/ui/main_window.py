@@ -24,7 +24,7 @@ class MainWindow(ctk.CTk):
         # Initialize attributes first to prevent callback crashes
         self.active_page = None
         self.pages = {}
-        self.page_order = ["Dashboard", "Snippets", "Notes", "Search", "Clipboard", "AIAssistant", "Settings", "Health", "Marketplace"]
+        self.page_order = ["Dashboard", "Snippets", "Notes", "ChatNotes", "Search", "Clipboard", "AIAssistant", "Settings", "Health", "Marketplace"]
         
         self.right_container = ctk.CTkFrame(self, fg_color="transparent")
         self.right_container.grid(row=0, column=1, sticky="nsew")
@@ -74,7 +74,7 @@ class MainWindow(ctk.CTk):
         self.bind("<Control-0>", lambda _e: self.zoom_reset())
         self.bind("<Control-f>", lambda _e: self._select_page_from_shortcut("Search"))
         self.bind("<Escape>", lambda _e: self._hide_from_escape())
-        for index, page_id in enumerate(self.page_order, start=1):
+        for index, page_id in enumerate(self.page_order[:9], start=1):
             self.bind(f"<Control-Key-{index}>", lambda _e, p=page_id: self._select_page_from_shortcut(p))
         self.bind("<Alt-Left>", lambda _e: self._switch_relative_page(-1))
         self.bind("<Alt-Right>", lambda _e: self._switch_relative_page(1))
@@ -107,6 +107,7 @@ class MainWindow(ctk.CTk):
         from snipglide.ui.dashboard import Dashboard
         from snipglide.ui.snippet_editor_view import SnippetEditorView
         from snipglide.ui.notes_page import NotesPage
+        from snipglide.ui.chat_notes_page import ChatNotesPage
         from snipglide.ui.search_page import SearchPage
         from snipglide.ui.settings_page import SettingsPage
         from snipglide.ui.health_page import HealthPage
@@ -123,6 +124,11 @@ class MainWindow(ctk.CTk):
                 snippets_changed_callback=self._notify_snippets_changed,
             ),
             "Notes": NotesPage(self.content_frame, toast_callback=self.toast),
+            "ChatNotes": ChatNotesPage(
+                self.content_frame,
+                toast_callback=self.toast,
+                navigate_to_snippet_callback=self._navigate_to_snippet,
+            ),
             "Search": SearchPage(
                 self.content_frame,
                 toast_callback=self.toast,
@@ -164,6 +170,8 @@ class MainWindow(ctk.CTk):
             page.refresh_stats()
         elif page_id == "Clipboard":
             page.refresh_history()
+        elif page_id == "ChatNotes":
+            page.refresh_chat(scroll_to_bottom=True)
             
     def toast(self, message: str, error: bool = False):
         popup = ctk.CTkToplevel(self)

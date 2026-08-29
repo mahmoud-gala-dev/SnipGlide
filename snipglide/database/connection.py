@@ -159,4 +159,19 @@ def initialize_database():
             )
         """)
         
+        # Create quick chat notes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                content TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_starred INTEGER DEFAULT 0,
+                tags TEXT DEFAULT '',
+                color TEXT DEFAULT '#25D366'
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_created ON chat_notes (created_at DESC, id DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_starred ON chat_notes (is_starred)")
+        
         conn.commit()
+

@@ -18,6 +18,7 @@ PACKAGE_TABLES = [
     "notes",
     "note_settings",
     "clipboard_history",
+    "chat_notes",
 ]
 
 MAX_PACKAGE_IMPORT_BYTES = 50 * 1024 * 1024
@@ -39,13 +40,14 @@ def get_health_report() -> dict:
             cursor.execute("PRAGMA integrity_check")
             report["integrity"] = cursor.fetchone()[0]
 
-            for table in ["snippets", "groups", "notes", "clipboard_history", "autocorrect", "usage_history"]:
+            for table in ["snippets", "groups", "notes", "chat_notes", "clipboard_history", "autocorrect", "usage_history"]:
                 cursor.execute(f"SELECT COUNT(*) FROM {table}")
                 report["counts"][table] = cursor.fetchone()[0]
     except Exception as e:
         report["integrity"] = f"error: {e}"
 
     return report
+
 
 
 def optimize_database(clear_clipboard: bool = False) -> dict:

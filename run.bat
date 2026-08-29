@@ -1,11 +1,17 @@
 @echo off
+chcp 65001 >nul
 cd /d "%~dp0"
+
 if not exist .venv (
-    echo Creating virtual environment...
-    python -m venv .venv
+    echo [INFO] Virtual environment not found. Running install.bat first...
+    call install.bat
+    exit /b 0
 )
-echo Installing/verifying requirements...
-.venv\Scripts\python -m pip install -r requirements.txt
-echo Running app...
+
+echo [INFO] Launching SnipGlide...
 .venv\Scripts\python app.py
-pause
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] Application exited with an error.
+    pause
+)

@@ -3309,6 +3309,10 @@
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\database\\autocorrect_repo.py',
    'PYMODULE'),
+  ('snipglide.database.chat_note_repo',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\database\\chat_note_repo.py',
+   'PYMODULE'),
   ('snipglide.database.clipboard_repo',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\database\\clipboard_repo.py',
@@ -3359,6 +3363,10 @@
    '(31)\\snipglide_python\\snipglide\\main.py',
    'PYMODULE'),
   ('snipglide.models', '-', 'PYMODULE'),
+  ('snipglide.models.chat_note',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\models\\chat_note.py',
+   'PYMODULE'),
   ('snipglide.models.group',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\models\\group.py',
@@ -3408,6 +3416,10 @@
   ('snipglide.ui.ai_assistant_page',
    'C:\\Users\\mrbea\\Downloads\\New folder '
    '(31)\\snipglide_python\\snipglide\\ui\\ai_assistant_page.py',
+   'PYMODULE'),
+  ('snipglide.ui.chat_notes_page',
+   'C:\\Users\\mrbea\\Downloads\\New folder '
+   '(31)\\snipglide_python\\snipglide\\ui\\chat_notes_page.py',
    'PYMODULE'),
   ('snipglide.ui.clipboard_history_page',
    'C:\\Users\\mrbea\\Downloads\\New folder '
