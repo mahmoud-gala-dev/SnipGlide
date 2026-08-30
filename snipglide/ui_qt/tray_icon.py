@@ -91,9 +91,7 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
             if self.main_window.isVisible() and not self.main_window.isMinimized():
                 self.main_window.hide()
             else:
-                self.main_window.showNormal()
-                self.main_window.raise_()
-                self.main_window.activateWindow()
+                self.main_window.show_and_activate()
 
     def _show_window(self):
         if self.main_window:

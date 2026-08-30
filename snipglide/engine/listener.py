@@ -78,17 +78,26 @@ class ExpansionEngine:
         return (time.time() - self._last_key_time) > self._idle_threshold
 
     def _on_press(self, key):
-        # 1. Global Hotkey Check: Ctrl + PrintScreen to open/focus application
+        # 1. Global Hotkey Check: Ctrl + PrintScreen to open/restore/focus application
         try:
+            vk = getattr(key, "vk", None)
+            key_name = getattr(key, "name", "")
+            key_str = str(key)
             is_print_screen = (
                 key == keyboard.Key.print_screen or
-                getattr(key, "name", "") == "print_screen" or
-                getattr(key, "vk", None) in (44, 0x2C)
+                key_name in ("print_screen", "snapshot", "print") or
+                key_str in ("Key.print_screen", "<44>", "Key.snapshot") or
+                vk in (44, 0x2C)
             )
             if is_print_screen:
                 import ctypes
-                # VK_CONTROL = 0x11
-                ctrl_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x11) & 0x8000)
+                # Check VK_CONTROL (0x11), VK_LCONTROL (0xA2), VK_RCONTROL (0xA3)
+                user32 = ctypes.windll.user32
+                ctrl_pressed = bool(
+                    (user32.GetAsyncKeyState(0x11) & 0x8000) or
+                    (user32.GetAsyncKeyState(0xA2) & 0x8000) or
+                    (user32.GetAsyncKeyState(0xA3) & 0x8000)
+                )
                 if ctrl_pressed:
                     logger.info("Global shortcut [Ctrl + PrintScreen] detected! Activating SnipGlide.")
                     if self.quick_open_callback:

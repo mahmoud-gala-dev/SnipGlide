@@ -145,6 +145,10 @@ class MainWindowQt(QMainWindow):
         self.shortcut_paste = QShortcut(QKeySequence("Alt+Space"), self)
         self.shortcut_paste.activated.connect(self.open_quick_paste_bar)
 
+        # Esc -> Minimize window (تصغير النافذة عبر زر Esc)
+        self.shortcut_esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
+        self.shortcut_esc.activated.connect(self.showMinimized)
+
         # Ctrl+PrintScreen -> Quick Open/Focus
         try:
             self.shortcut_quick_open = QShortcut(QKeySequence("Ctrl+Print"), self)
@@ -153,26 +157,43 @@ class MainWindowQt(QMainWindow):
             pass
 
     def show_and_activate(self):
-        """Bring window to foreground from background or system tray."""
-        if self.isMinimized():
-            self.showNormal()
-        else:
-            self.show()
-
+        """Bring window to foreground from background or system tray reliably."""
+        # 1. Unminimize and reset Qt window flags
+        self.setWindowState((self.windowState() & ~Qt.WindowMinimized) | Qt.WindowActive)
+        self.show()
+        self.showNormal()
         self.raise_()
         self.activateWindow()
 
-        # Force foreground on Windows
+        # 2. Force Windows OS foreground focus
         try:
             import ctypes
             hwnd = int(self.winId())
-            # SW_RESTORE = 9
-            ctypes.windll.user32.ShowWindow(hwnd, 9)
-            ctypes.windll.user32.SetForegroundWindow(hwnd)
+            user32 = ctypes.windll.user32
+            kernel32 = ctypes.windll.kernel32
+
+            # SW_RESTORE = 9, SW_SHOW = 5
+            user32.ShowWindow(hwnd, 9)
+
+            fore_hwnd = user32.GetForegroundWindow()
+            if fore_hwnd != hwnd:
+                fore_thread = user32.GetWindowThreadProcessId(fore_hwnd, None)
+                app_thread = kernel32.GetCurrentThreadId()
+                if fore_thread and fore_thread != app_thread:
+                    user32.AttachThreadInput(fore_thread, app_thread, True)
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+                    user32.AttachThreadInput(fore_thread, app_thread, False)
+                else:
+                    user32.BringWindowToTop(hwnd)
+                    user32.SetForegroundWindow(hwnd)
+            else:
+                user32.BringWindowToTop(hwnd)
+                user32.SetForegroundWindow(hwnd)
         except Exception:
             pass
 
-        self.toast("⚡ تم فتح SnipGlide عبر الاختصار السريع (Ctrl + PrintScreen)", False)
+        self.toast("⚡ تم استعادة وفتح SnipGlide عبر (Ctrl + PrintScreen)", False)
 
     def open_command_palette(self):
         palette = CommandPaletteQt(self)
@@ -429,9 +450,12 @@ class MainWindowQt(QMainWindow):
         else:
             event.accept()
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.showMinimized()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def changeEvent(self, event):
-        from PySide6.QtCore import QEvent
-        if event.type() == QEvent.WindowStateChange and self.isMinimized():
-            if hasattr(self, "tray_icon") and self.tray_icon and self.tray_icon.isVisible():
-                QTimer.singleShot(0, self.hide)
         super().changeEvent(event)
