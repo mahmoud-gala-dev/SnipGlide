@@ -145,6 +145,35 @@ class MainWindowQt(QMainWindow):
         self.shortcut_paste = QShortcut(QKeySequence("Alt+Space"), self)
         self.shortcut_paste.activated.connect(self.open_quick_paste_bar)
 
+        # Ctrl+PrintScreen -> Quick Open/Focus
+        try:
+            self.shortcut_quick_open = QShortcut(QKeySequence("Ctrl+Print"), self)
+            self.shortcut_quick_open.activated.connect(self.show_and_activate)
+        except Exception:
+            pass
+
+    def show_and_activate(self):
+        """Bring window to foreground from background or system tray."""
+        if self.isMinimized():
+            self.showNormal()
+        else:
+            self.show()
+
+        self.raise_()
+        self.activateWindow()
+
+        # Force foreground on Windows
+        try:
+            import ctypes
+            hwnd = int(self.winId())
+            # SW_RESTORE = 9
+            ctypes.windll.user32.ShowWindow(hwnd, 9)
+            ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+
+        self.toast("⚡ تم فتح SnipGlide عبر الاختصار السريع (Ctrl + PrintScreen)", False)
+
     def open_command_palette(self):
         palette = CommandPaletteQt(self)
         palette.action_triggered.connect(self._handle_command_palette_action)

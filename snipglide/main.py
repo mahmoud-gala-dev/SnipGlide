@@ -93,6 +93,7 @@ class AppCoordinator:
         hotkey_map = {
             '<ctrl>+<shift>+<space>': lambda: self.window.after(0, self.show_quick_search),
             '<ctrl>+<alt>+<shift>+s': lambda: self.window.after(0, self.toggle_window_visibility),
+            '<ctrl>+<print_screen>': lambda: self.window.after(0, self.show_window),
         }
         hotkey_map.update(self._load_snippet_hotkeys())
         return hotkey_map

@@ -10,9 +10,10 @@ from snipglide.engine.window_tracker import get_active_window_info
 from snipglide.utils.logger import logger
 
 class ExpansionEngine:
-    def __init__(self, settings_provider: Callable[[], dict], form_prompt_callback: Callable[[object, list], Optional[dict]] = None):
+    def __init__(self, settings_provider: Callable[[], dict], form_prompt_callback: Callable[[object, list], Optional[dict]] = None, quick_open_callback: Callable[[], None] = None):
         self.settings_provider = settings_provider
         self.form_prompt_callback = form_prompt_callback
+        self.quick_open_callback = quick_open_callback
         self.buffer = ""
         self.controller = keyboard.Controller()
         self.listener: Optional[keyboard.Listener] = None
@@ -77,6 +78,25 @@ class ExpansionEngine:
         return (time.time() - self._last_key_time) > self._idle_threshold
 
     def _on_press(self, key):
+        # 1. Global Hotkey Check: Ctrl + PrintScreen to open/focus application
+        try:
+            is_print_screen = (
+                key == keyboard.Key.print_screen or
+                getattr(key, "name", "") == "print_screen" or
+                getattr(key, "vk", None) in (44, 0x2C)
+            )
+            if is_print_screen:
+                import ctypes
+                # VK_CONTROL = 0x11
+                ctrl_pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x11) & 0x8000)
+                if ctrl_pressed:
+                    logger.info("Global shortcut [Ctrl + PrintScreen] detected! Activating SnipGlide.")
+                    if self.quick_open_callback:
+                        self.quick_open_callback()
+                    return
+        except Exception as e:
+            logger.debug(f"Quick open check failed: {e}")
+
         if not self.running or self.suspended:
             return
             

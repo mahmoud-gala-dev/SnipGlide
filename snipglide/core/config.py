@@ -34,6 +34,7 @@ DEFAULT_SETTINGS = {
     "clipboard_poll_interval": 3.0,
     "clipboard_max_chars": 10000,
     "clipboard_skip_private_windows": True,
+    "quick_open_hotkey": "<ctrl>+<print_screen>",
 }
 
 def load_settings() -> dict:

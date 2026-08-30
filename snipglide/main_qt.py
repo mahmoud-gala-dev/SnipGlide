@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QFont
 
 from snipglide.core.config import APP_NAME, load_settings, save_settings
@@ -11,6 +11,9 @@ from snipglide.ui_qt.main_window import MainWindowQt
 from snipglide.utils.helpers import download_and_load_arabic_font
 from snipglide.utils.logger import logger
 
+class HotkeySignalBridge(QObject):
+    quick_open_signal = Signal()
+
 class AppCoordinatorQt:
     def __init__(self, app: QApplication):
         self.app = app
@@ -18,13 +21,18 @@ class AppCoordinatorQt:
         self.settings = load_settings()
         self.window = None
 
+        # Thread-safe Qt signal bridge for global hotkeys
+        self.hotkey_bridge = HotkeySignalBridge()
+        self.hotkey_bridge.quick_open_signal.connect(self.handle_quick_open)
+
         # Load Google Arabic Font and set globally
         self.font_family = download_and_load_arabic_font("Tajawal")
         self.app.setFont(QFont(self.font_family, 12))
 
-        # Initialize background engine
+        # Initialize background engine with global hotkey support
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
+            quick_open_callback=self.hotkey_bridge.quick_open_signal.emit,
         )
         self.engine.start()
 
@@ -33,6 +41,11 @@ class AppCoordinatorQt:
             settings_provider=self.get_current_settings,
         )
         self.clipboard_monitor.start()
+
+    def handle_quick_open(self):
+        """Thread-safe handler to bring main window to front when hotkey is pressed."""
+        if self.window:
+            self.window.show_and_activate()
 
     def get_current_settings(self) -> dict:
         if self.window and hasattr(self.window, "settings"):

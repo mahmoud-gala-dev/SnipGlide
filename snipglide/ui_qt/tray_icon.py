@@ -45,7 +45,7 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
         """)
 
         # Open Window
-        act_open = menu.addAction("🟢 فتح SnipGlide Pro")
+        act_open = menu.addAction("🟢 فتح SnipGlide Pro (Ctrl + PrintScreen)")
         act_open.triggered.connect(self._show_window)
 
         act_paste_bar = menu.addAction("⚡ شريط اللصق السريع (Alt+Space)")
@@ -97,9 +97,12 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
 
     def _show_window(self):
         if self.main_window:
-            self.main_window.showNormal()
-            self.main_window.raise_()
-            self.main_window.activateWindow()
+            if hasattr(self.main_window, "show_and_activate"):
+                self.main_window.show_and_activate()
+            else:
+                self.main_window.showNormal()
+                self.main_window.raise_()
+                self.main_window.activateWindow()
 
     def _open_paste_bar(self):
         if self.main_window and hasattr(self.main_window, "open_quick_paste_bar"):
