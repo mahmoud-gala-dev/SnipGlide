@@ -198,14 +198,26 @@ def download_and_load_arabic_font(font_name: str = "Tajawal") -> str:
             logger.error(f"Failed to download {font_name} font: {e}")
             return "Segoe UI"
             
+    actual_family = font_name
+    try:
+        from PySide6.QtGui import QFontDatabase
+        font_id = QFontDatabase.addApplicationFont(str(font_path))
+        if font_id != -1:
+            families = QFontDatabase.applicationFontFamilies(font_id)
+            if families:
+                actual_family = families[0]
+                logger.info(f"Registered Qt Application Font: {actual_family}")
+    except Exception:
+        pass
+
     try:
         FR_PRIVATE = 0x10
         res = ctypes.windll.gdi32.AddFontResourceExW(str(font_path), FR_PRIVATE, 0)
         if res != 0:
-            logger.info(f"{font_name} Arabic font loaded successfully.")
-            return font_name
+            logger.info(f"{font_name} Arabic font loaded via GDI.")
+            return actual_family
     except Exception as e:
-        logger.error(f"Failed to load {font_name} font: {e}")
+        logger.error(f"Failed to load {font_name} font via GDI: {e}")
         
-    return "Segoe UI"
+    return actual_family if actual_family else "Segoe UI"
 
