@@ -35,9 +35,9 @@ class MainWindowQt(QMainWindow):
         self.font_family = font_family or get_arabic_font_family()
 
         self.setWindowTitle(f"{APP_NAME} - Professional Edition")
-        # Enlarge main frame for ultra-comfortable viewing
-        self.resize(1440, 900)
-        self.setMinimumSize(1200, 750)
+        # Enlarge main frame for ultra-comfortable spacious viewing
+        self.resize(1560, 960)
+        self.setMinimumSize(1250, 780)
 
         # Set Window Favicon Icon (prioritize ICO on Windows)
         icon_ico = Path(__file__).resolve().parent.parent / "assets" / "icon.ico"
