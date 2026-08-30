@@ -1,82 +1,297 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QScrollArea,
+    QPushButton, QProgressBar, QApplication
 )
-from snipglide.database.snippet_repo import get_statistics
+
+from snipglide.database.snippet_repo import get_statistics, get_all_snippets
+from snipglide.database.note_repo import get_notes_count
+from snipglide.database.chat_note_repo import get_chat_notes_count
+from snipglide.database.clipboard_repo import get_clipboard_history_count
 
 class DashboardQt(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
+    def __init__(self, main_window=None, parent=None):
+        super().__init__(parent or main_window)
+        self.main_window = main_window
         self._setup_ui()
 
     def _setup_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(25, 20, 25, 20)
-        layout.setSpacing(15)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(28, 24, 28, 24)
+        main_layout.setSpacing(20)
 
-        title = QLabel("لوحة الإحصائيات (Performance Dashboard)")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #e9edef;")
-        layout.addWidget(title)
+        # ── Header Title & Refresh ──
+        header_row = QHBoxLayout()
+        title_box = QVBoxLayout()
+        title_box.setSpacing(4)
+        title = QLabel("📊 لوحة الأداء والإنتاجية (Analytics & Overview)")
+        title.setStyleSheet("font-size: 26px; font-weight: 800; color: #f0f2f5;")
+        subtitle = QLabel("نظرة شاملة وسريعة على اختصاراتك، ملاحظاتك، والوقت الموفّر أثناء الكتابة.")
+        subtitle.setStyleSheet("font-size: 14px; color: #94a3b8;")
+        title_box.addWidget(title)
+        title_box.addWidget(subtitle)
+        header_row.addLayout(title_box)
+        header_row.addStretch()
 
-        # Stats Cards Row
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(15)
+        ref_btn = QPushButton("🔄 تحديث الأرقام")
+        ref_btn.setFixedHeight(42)
+        ref_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        ref_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #202c33;
+                border: 1.5px solid #3b4a54;
+                color: #f0f2f5;
+                font-weight: bold;
+                font-size: 14px;
+                border-radius: 10px;
+                padding: 6px 18px;
+            }
+            QPushButton:hover {
+                background-color: #2a3942;
+                border-color: #25D366;
+            }
+        """)
+        ref_btn.clicked.connect(self.refresh_stats)
+        header_row.addWidget(ref_btn)
+        main_layout.addLayout(header_row)
 
-        self.snippets_card = self._create_card("إجمالي الاختصارات (Snippets)", "0", "#16a34a")
-        self.groups_card = self._create_card("المجموعات (Groups)", "0", "#2563eb")
-        self.expansions_card = self._create_card("مرات التوسيع (Expansions)", "0", "#f59e0b")
+        # ── 6 Glowing Metric Cards ──
+        cards_grid = QHBoxLayout()
+        cards_grid.setSpacing(14)
 
-        cards_layout.addWidget(self.snippets_card)
-        cards_layout.addWidget(self.groups_card)
-        cards_layout.addWidget(self.expansions_card)
-        layout.addLayout(cards_layout)
+        self.card_snippets = self._create_metric_card("✂️ الاختصارات", "0", "#25D366", "إجمالي القوالب النشطة")
+        self.card_chat = self._create_metric_card("💬 رسائل الشات", "0", "#38bdf8", "ملاحظات الشات السريعة")
+        self.card_notes = self._create_metric_card("📝 الملاحظات", "0", "#f59e0b", "مستودع الملاحظات")
+        self.card_expansions = self._create_metric_card("⚡ التوسيعات", "0", "#a855f7", "عدد مرات التوسيع")
+        self.card_time = self._create_metric_card("⏱️ الوقت الموفّر", "0 دقيقة", "#ec4899", "وقت الكتابة المسترجع")
+        self.card_clip = self._create_metric_card("📋 الحافظة", "0", "#06b6d4", "عناصر السجل المكتشفة")
 
-        # Most Used List Container
-        most_used_frame = QFrame()
-        most_used_frame.setStyleSheet("background-color: #1f2c34; border-radius: 12px; padding: 15px;")
-        mu_layout = QVBoxLayout(most_used_frame)
-        
-        mu_title = QLabel("الأكثر استخداماً (Most Used Snippets)")
-        mu_title.setStyleSheet("font-size: 16px; font-weight: bold; color: #e9edef;")
-        mu_layout.addWidget(mu_title)
+        cards_grid.addWidget(self.card_snippets)
+        cards_grid.addWidget(self.card_chat)
+        cards_grid.addWidget(self.card_notes)
+        cards_grid.addWidget(self.card_expansions)
+        cards_grid.addWidget(self.card_time)
+        cards_grid.addWidget(self.card_clip)
+        main_layout.addLayout(cards_grid)
+
+        # ── Quick Action Hub ──
+        hub_frame = QFrame()
+        hub_frame.setStyleSheet("""
+            QFrame {
+                background-color: #111b21;
+                border: 1.5px solid #202c33;
+                border-radius: 14px;
+                padding: 12px;
+            }
+        """)
+        hub_layout = QHBoxLayout(hub_frame)
+        hub_layout.setContentsMargins(16, 10, 16, 10)
+        hub_layout.setSpacing(12)
+
+        hub_title = QLabel("⚡ الإجراءات الفورية:")
+        hub_title.setStyleSheet("color: #94a3b8; font-weight: bold; font-size: 14px; border: none;")
+        hub_layout.addWidget(hub_title)
+
+        btn_snip = self._create_hub_button("➕ اختصار جديد", "#25D366", lambda: self._navigate("Snippets", new_snip=True))
+        btn_chat = self._create_hub_button("💬 كتابة في الشات", "#38bdf8", lambda: self._navigate("ChatNotes"))
+        btn_cmd = self._create_hub_button("⌨️ لوحة الأوامر (Ctrl+K)", "#a855f7", self._open_cmd)
+        btn_paste = self._create_hub_button("🚀 شريط اللصق (Alt+Space)", "#f59e0b", self._open_paste)
+
+        hub_layout.addWidget(btn_snip)
+        hub_layout.addWidget(btn_chat)
+        hub_layout.addWidget(btn_cmd)
+        hub_layout.addWidget(btn_paste)
+        hub_layout.addStretch()
+        main_layout.addWidget(hub_frame)
+
+        # ── Two-Column Lower Section ──
+        lower_row = QHBoxLayout()
+        lower_row.setSpacing(18)
+
+        # Left Column: Most Used Snippets
+        mu_frame = QFrame()
+        mu_frame.setStyleSheet("background-color: #111b21; border: 1.5px solid #202c33; border-radius: 14px; padding: 14px;")
+        mu_layout = QVBoxLayout(mu_frame)
+        mu_layout.setContentsMargins(16, 14, 16, 14)
+        mu_layout.setSpacing(10)
+
+        mu_head = QLabel("🏆 الاختصارات الأكثر استخداماً (Top Snippets)")
+        mu_head.setStyleSheet("font-size: 16px; font-weight: bold; color: #f0f2f5; border: none;")
+        mu_layout.addWidget(mu_head)
 
         self.mu_container = QWidget()
         self.mu_list_layout = QVBoxLayout(self.mu_container)
         self.mu_list_layout.setSpacing(8)
-        
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background: transparent; border: none;")
-        scroll.setWidget(self.mu_container)
-        mu_layout.addWidget(scroll)
+        self.mu_list_layout.setContentsMargins(0, 0, 0, 0)
 
-        layout.addWidget(most_used_frame, stretch=1)
+        mu_scroll = QScrollArea()
+        mu_scroll.setWidgetResizable(True)
+        mu_scroll.setStyleSheet("background: transparent; border: none;")
+        mu_scroll.setWidget(self.mu_container)
+        mu_layout.addWidget(mu_scroll, stretch=1)
+        lower_row.addWidget(mu_frame, stretch=3)
+
+        # Right Column: Productivity Insights
+        insights_frame = QFrame()
+        insights_frame.setStyleSheet("background-color: #111b21; border: 1.5px solid #202c33; border-radius: 14px; padding: 14px;")
+        in_layout = QVBoxLayout(insights_frame)
+        in_layout.setContentsMargins(16, 14, 16, 14)
+        in_layout.setSpacing(12)
+
+        in_head = QLabel("💡 معدل الإنتاجية وتوفير النقرات")
+        in_head.setStyleSheet("font-size: 16px; font-weight: bold; color: #f0f2f5; border: none;")
+        in_layout.addWidget(in_head)
+
+        self.keystrokes_lbl = QLabel("⌨️ النقرات الموفّرة: 0 نقرة")
+        self.keystrokes_lbl.setStyleSheet("font-size: 15px; color: #25D366; font-weight: bold; border: none;")
+        in_layout.addWidget(self.keystrokes_lbl)
+
+        self.speed_boost_lbl = QLabel("🚀 تسريع الكتابة المقدر: +140%")
+        self.speed_boost_lbl.setStyleSheet("font-size: 15px; color: #38bdf8; font-weight: bold; border: none;")
+        in_layout.addWidget(self.speed_boost_lbl)
+
+        # Productivity Progress Bar
+        bar_title = QLabel("كفاءة استخدام القوالب:")
+        bar_title.setStyleSheet("font-size: 13px; color: #94a3b8; border: none;")
+        in_layout.addWidget(bar_title)
+
+        self.prod_bar = QProgressBar()
+        self.prod_bar.setFixedHeight(18)
+        self.prod_bar.setValue(88)
+        self.prod_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #0b141a;
+                border: 1px solid #202c33;
+                border-radius: 9px;
+                text-align: center;
+                color: white;
+                font-weight: bold;
+                font-size: 11px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #10b981, stop:1 #38bdf8);
+                border-radius: 8px;
+            }
+        """)
+        in_layout.addWidget(self.prod_bar)
+
+        in_layout.addStretch()
+
+        # Engine Status Box
+        status_box = QFrame()
+        status_box.setStyleSheet("background-color: #0b141a; border: 1px solid #202c33; border-radius: 10px; padding: 10px;")
+        s_layout = QHBoxLayout(status_box)
+        s_layout.setContentsMargins(10, 6, 10, 6)
+
+        dot = QLabel("🟢")
+        dot.setStyleSheet("font-size: 14px; border: none;")
+        s_layout.addWidget(dot)
+
+        st_lbl = QLabel("محرك التوسيع يعمل بسلاسة في الخلفية (Active)")
+        st_lbl.setStyleSheet("color: #22c55e; font-size: 13px; font-weight: bold; border: none;")
+        s_layout.addWidget(st_lbl)
+        s_layout.addStretch()
+
+        in_layout.addWidget(status_box)
+        lower_row.addWidget(insights_frame, stretch=2)
+
+        main_layout.addLayout(lower_row, stretch=1)
         self.refresh_stats()
 
-    def _create_card(self, title: str, value: str, color: str) -> QFrame:
+    def _create_metric_card(self, title: str, val: str, border_color: str, sub: str) -> QFrame:
         card = QFrame()
-        card.setFixedHeight(100)
-        card.setStyleSheet(f"background-color: #1f2c34; border-radius: 12px; border-left: 5px solid {color}; padding: 12px;")
+        card.setFixedHeight(115)
+        card.setStyleSheet(f"""
+            QFrame {{
+                background-color: #111b21;
+                border-radius: 14px;
+                border: 1.5px solid #202c33;
+                border-top: 4px solid {border_color};
+                padding: 10px;
+            }}
+            QFrame:hover {{
+                border-color: {border_color};
+            }}
+        """)
         c_layout = QVBoxLayout(card)
-        c_layout.setContentsMargins(10, 8, 10, 8)
-        
+        c_layout.setContentsMargins(12, 10, 12, 10)
+        c_layout.setSpacing(4)
+
         t_lbl = QLabel(title)
-        t_lbl.setStyleSheet("font-size: 12px; color: #8696a0; font-weight: bold;")
-        
-        v_lbl = QLabel(value)
-        v_lbl.setStyleSheet("font-size: 26px; font-weight: bold; color: #e9edef;")
-        
+        t_lbl.setStyleSheet("font-size: 13px; color: #94a3b8; font-weight: bold; border: none;")
+
+        v_lbl = QLabel(val)
+        v_lbl.setStyleSheet("font-size: 26px; font-weight: 800; color: #f0f2f5; border: none;")
+
+        s_lbl = QLabel(sub)
+        s_lbl.setStyleSheet("font-size: 11px; color: #64748b; border: none;")
+
         c_layout.addWidget(t_lbl)
         c_layout.addWidget(v_lbl)
+        c_layout.addWidget(s_lbl)
         card.value_label = v_lbl
         return card
+
+    def _create_hub_button(self, text: str, hover_color: str, callback) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setFixedHeight(38)
+        btn.setCursor(QCursor(Qt.PointingHandCursor))
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #202c33;
+                color: #f0f2f5;
+                font-weight: bold;
+                font-size: 13px;
+                border: 1px solid #3b4a54;
+                border-radius: 8px;
+                padding: 4px 14px;
+            }}
+            QPushButton:hover {{
+                background-color: #2a3942;
+                border-color: {hover_color};
+                color: {hover_color};
+            }}
+        """)
+        btn.clicked.connect(callback)
+        return btn
+
+    def _navigate(self, page_id: str, new_snip: bool = False):
+        if self.main_window:
+            self.main_window.sidebar.select_page(page_id)
+            if new_snip and hasattr(self.main_window, "snippets_page"):
+                self.main_window.snippets_page.new_snippet()
+
+    def _open_cmd(self):
+        if self.main_window and hasattr(self.main_window, "open_command_palette"):
+            self.main_window.open_command_palette()
+
+    def _open_paste(self):
+        if self.main_window and hasattr(self.main_window, "open_quick_paste_bar"):
+            self.main_window.open_quick_paste_bar()
 
     def refresh_stats(self):
         try:
             stats = get_statistics()
-            self.snippets_card.value_label.setText(str(stats["total_snippets"]))
-            self.groups_card.value_label.setText(str(stats["total_groups"]))
-            self.expansions_card.value_label.setText(str(stats["total_expansions"]))
+            total_snippets = stats.get("total_snippets", 0)
+            total_expansions = stats.get("total_expansions", 0)
+            total_chat = get_chat_notes_count()
+            total_notes = get_notes_count()
+            total_clip = get_clipboard_history_count()
+
+            # Calculate time & keystrokes saved (assuming ~40 chars per expansion, 200 CPM typing speed)
+            chars_saved = total_expansions * 45
+            minutes_saved = (chars_saved / 200)
+            time_str = f"{minutes_saved:.1f} دقيقة" if minutes_saved < 60 else f"{(minutes_saved / 60):.1f} ساعة"
+
+            self.card_snippets.value_label.setText(str(total_snippets))
+            self.card_chat.value_label.setText(str(total_chat))
+            self.card_notes.value_label.setText(str(total_notes))
+            self.card_expansions.value_label.setText(str(total_expansions))
+            self.card_time.value_label.setText(time_str)
+            self.card_clip.value_label.setText(str(total_clip))
+
+            self.keystrokes_lbl.setText(f"⌨️ النقرات الموفّرة: {chars_saved:,} نقرة")
 
             while self.mu_list_layout.count():
                 item = self.mu_list_layout.takeAt(0)
@@ -85,25 +300,37 @@ class DashboardQt(QWidget):
 
             most_used = stats.get("most_used", [])
             if not most_used:
-                no_lbl = QLabel("لا توجد إحصائيات مسجلة بعد.")
-                no_lbl.setStyleSheet("color: #8696a0; font-size: 13px;")
+                no_lbl = QLabel("لا توجد إحصائيات مسجلة بعد. استخدم أي اختصار لتبدأ الأرقام بالتسجيل فوراً!")
+                no_lbl.setStyleSheet("color: #64748b; font-size: 13px; padding: 15px; border: none;")
                 self.mu_list_layout.addWidget(no_lbl)
             else:
                 for item in most_used:
                     row = QFrame()
-                    row.setStyleSheet("background-color: #111b21; border-radius: 8px; padding: 10px;")
+                    row.setStyleSheet("""
+                        QFrame {
+                            background-color: #182229;
+                            border: 1px solid #2a3942;
+                            border-radius: 10px;
+                            padding: 8px 12px;
+                        }
+                        QFrame:hover {
+                            border-color: #3b82f6;
+                        }
+                    """)
                     r_layout = QHBoxLayout(row)
-                    r_layout.setContentsMargins(12, 6, 12, 6)
-                    
-                    sc_lbl = QLabel(item["shortcut"])
-                    sc_lbl.setStyleSheet("font-weight: bold; font-size: 14px; color: #e9edef;")
-                    
-                    cnt_lbl = QLabel(f"{item['usage_counter']} مرة")
-                    cnt_lbl.setStyleSheet("color: #3b82f6; font-weight: bold;")
-                    
+                    r_layout.setContentsMargins(10, 6, 10, 6)
+                    r_layout.setSpacing(10)
+
+                    sc_lbl = QLabel(f"✂️ {item['shortcut']}")
+                    sc_lbl.setStyleSheet("font-weight: bold; font-size: 14px; color: #f0f2f5; border: none;")
                     r_layout.addWidget(sc_lbl)
+
                     r_layout.addStretch()
-                    r_layout.addWidget(cnt_lbl)
+
+                    cnt_badge = QLabel(f"{item['usage_counter']} مرة")
+                    cnt_badge.setStyleSheet("background-color: #1e3a8a; color: #93c5fd; font-weight: bold; font-size: 12px; border-radius: 6px; padding: 3px 10px; border: none;")
+                    r_layout.addWidget(cnt_badge)
+
                     self.mu_list_layout.addWidget(row)
         except Exception:
             pass

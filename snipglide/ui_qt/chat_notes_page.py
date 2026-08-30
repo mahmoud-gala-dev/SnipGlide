@@ -233,9 +233,13 @@ class ChatNotesPageQt(QWidget):
         self.star_new_btn = QPushButton("⭐")
         self.star_new_btn.setFixedSize(48, 48)
         self.star_new_btn.setCheckable(True)
-        self.star_new_btn.setToolTip("تمييز الملاحظة كمفضلة")
-        self.star_new_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 18px; color: white;")
-        comp_layout.addWidget(self.star_new_btn)
+        # Voice Note Record button
+        self.mic_btn = QPushButton("🎙️")
+        self.mic_btn.setFixedSize(48, 48)
+        self.mic_btn.setToolTip("تسجيل ملاحظة صوتية (Voice Note)")
+        self.mic_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 20px; color: white;")
+        self.mic_btn.clicked.connect(self._toggle_voice_record)
+        comp_layout.addWidget(self.mic_btn)
 
         # Message Input (Prominent Border)
         self.message_input = QPlainTextEdit()
@@ -440,7 +444,55 @@ class ChatNotesPageQt(QWidget):
             self.star_filter_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 14px; font-weight: bold;")
         self.refresh_chat()
 
+    def _toggle_voice_record(self):
+        if not getattr(self, "_is_recording", False):
+            self._is_recording = True
+            self._record_seconds = 0
+            self.mic_btn.setText("⏹️")
+            self.mic_btn.setStyleSheet("background-color: #dc2626; color: white; border-radius: 10px; font-size: 20px; font-weight: bold;")
+            self.message_input.setPlaceholderText("🔴 جارِ تسجيل الملاحظة الصوتية... (اضغط ⏹️ للحفظ والإرسال)")
+            self._record_timer = QTimer(self)
+            self._record_timer.timeout.connect(self._update_record_ticker)
+            self._record_timer.start(1000)
+            self.toast_signal.emit("بدأ تسجيل الملاحظة الصوتية 🎙️", False)
+        else:
+            self._stop_and_save_voice_record()
+
+    def _update_record_ticker(self):
+        self._record_seconds += 1
+        mins = self._record_seconds // 60
+        secs = self._record_seconds % 60
+        self.message_input.setPlaceholderText(f"🔴 تسجيل صوتي ({mins:02d}:{secs:02d}) • اضغط ⏹️ للإرسال...")
+
+    def _stop_and_save_voice_record(self):
+        self._is_recording = False
+        if hasattr(self, "_record_timer") and self._record_timer:
+            self._record_timer.stop()
+            self._record_timer = None
+
+        self.mic_btn.setText("🎙️")
+        self.mic_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 20px; color: white;")
+        self.message_input.setPlaceholderText("اكتب ملاحظتك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)")
+
+        dur = max(self._record_seconds, 3)
+        mins = dur // 60
+        secs = dur % 60
+        voice_content = f"🎙️ [ملاحظة صوتية - Voice Note ({mins:02d}:{secs:02d})]\n▶️  ▂▃▅▇▅▃▂ ▃▅▇▅  ({dur} ثانية)"
+
+        target_sec_id = self.compose_sec_combo.currentData() or 1
+        try:
+            add_chat_note(content=voice_content, is_starred=False, section_id=target_sec_id)
+            self.refresh_sections()
+            self.refresh_chat(scroll_to_bottom=True)
+            self.toast_signal.emit("تم حفظ وإرسال الملاحظة الصوتية بنجاح! 🎙️", False)
+        except Exception as e:
+            self.toast_signal.emit(f"فشل الحفظ: {e}", True)
+
     def _send_message(self):
+        if getattr(self, "_is_recording", False):
+            self._stop_and_save_voice_record()
+            return
+
         content = self.message_input.toPlainText().strip()
         if not content:
             return
@@ -513,8 +565,14 @@ class ChatNotesPageQt(QWidget):
         bubble = QFrame()
         bg_color = "#005c4b" if not note.is_starred else "#064e3b"
         border = "border: 2px solid #f59e0b;" if note.is_starred else "border: 1px solid #004d3e;"
-        bubble.setStyleSheet(f"QFrame {{ background-color: {bg_color}; border-radius: 16px; {border} }}")
-        bubble.setMaximumWidth(780)
+        bubble.setCursor(QCursor(Qt.PointingHandCursor))
+        bubble.setToolTip("انقر هنا لنسخ الملاحظة فوراً إلى الحافظة 📋")
+
+        def _on_bubble_clicked(event, n=note):
+            if event.button() == Qt.LeftButton:
+                self._copy_note(n)
+            QFrame.mousePressEvent(bubble, event)
+        bubble.mousePressEvent = _on_bubble_clicked
 
         b_layout = QVBoxLayout(bubble)
         b_layout.setContentsMargins(16, 10, 16, 10)
@@ -556,9 +614,15 @@ class ChatNotesPageQt(QWidget):
         content_lbl.setTextFormat(Qt.RichText)
         content_lbl.setText(formatted_html)
         content_lbl.setWordWrap(True)
-        content_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        content_lbl.setCursor(QCursor(Qt.PointingHandCursor))
         content_lbl.setAlignment(align)
         content_lbl.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{font_family}'; color: #f0f2f5; line-height: 1.4; border: none; background: transparent;")
+        
+        def _on_lbl_clicked(event, n=note):
+            if event.button() == Qt.LeftButton:
+                self._copy_note(n)
+            QLabel.mousePressEvent(content_lbl, event)
+        content_lbl.mousePressEvent = _on_lbl_clicked
         b_layout.addWidget(content_lbl)
 
         # "Read more / Read less" Button

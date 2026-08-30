@@ -85,6 +85,8 @@ class NotesPageQt(QWidget):
             }
         """)
         self.notes_list.itemClicked.connect(self._on_item_clicked)
+        self.notes_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.notes_list.customContextMenuRequested.connect(self._show_notes_menu)
         l_layout.addWidget(self.notes_list, stretch=1)
         splitter.addWidget(left_pane)
 
@@ -235,6 +237,37 @@ class NotesPageQt(QWidget):
             self.toast_signal.emit("تم حفظ الملاحظة بنجاح! 💾", False)
         except Exception as e:
             self.toast_signal.emit(f"فشل الحفظ: {e}", True)
+
+    def _show_notes_menu(self, pos):
+        item = self.notes_list.itemAt(pos)
+        if not item:
+            return
+        nid = item.data(Qt.UserRole)
+        note = get_note_by_id(nid)
+        if not note:
+            return
+
+        menu = QMenu(self)
+        copy_act = menu.addAction("📋 نسخ محتوى الملاحظة")
+        pin_act = menu.addAction("📌 إلغاء التثبيت" if note.pinned else "📌 تثبيت في الأعلى")
+        menu.addSeparator()
+        del_act = menu.addAction("🗑️ حذف الملاحظة")
+
+        action = menu.exec(self.notes_list.mapToGlobal(pos))
+        if action == copy_act:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(note.content)
+                self.toast_signal.emit("تم نسخ محتوى الملاحظة! 📋", False)
+        elif action == pin_act:
+            toggle_pin(note.id)
+            self.refresh_list()
+            self.toast_signal.emit("تم تحديث حالة التثبيت 📌", False)
+        elif action == del_act:
+            delete_note(note.id)
+            self.new_note()
+            self.refresh_list()
+            self.toast_signal.emit("تم حذف الملاحظة 🗑️", False)
 
     def _delete_current(self):
         if not self.selected_note_id:

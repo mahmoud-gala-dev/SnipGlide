@@ -102,3 +102,10 @@ def toggle_pin(note_id: int):
         cursor = conn.cursor()
         cursor.execute("UPDATE notes SET pinned = NOT pinned WHERE id = ?", (note_id,))
         conn.commit()
+
+def get_notes_count() -> int:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM notes")
+        row = cursor.fetchone()
+        return row[0] if row else 0

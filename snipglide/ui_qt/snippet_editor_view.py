@@ -89,6 +89,8 @@ class SnippetEditorViewQt(QWidget):
             }
         """)
         self.snippet_list.itemClicked.connect(self._on_item_clicked)
+        self.snippet_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.snippet_list.customContextMenuRequested.connect(self._show_snippet_menu)
         l_layout.addWidget(self.snippet_list, stretch=1)
         splitter.addWidget(left_pane)
 
@@ -111,11 +113,24 @@ class SnippetEditorViewQt(QWidget):
         row1.addWidget(self.group_combo)
         r_layout.addLayout(row1)
 
-        # Description
+        # Description & App Filter Row
+        row2 = QHBoxLayout()
         self.desc_edit = QLineEdit()
         self.desc_edit.setPlaceholderText("الوصف التوضيحي (اختياري)")
         self.desc_edit.setFixedHeight(44)
-        r_layout.addWidget(self.desc_edit)
+        row2.addWidget(self.desc_edit, stretch=2)
+
+        self.app_combo = QComboBox()
+        self.app_combo.setFixedHeight(44)
+        self.app_combo.addItem("🌐 يعمل في كافة البرامج (All Apps)", "")
+        self.app_combo.addItem("💻 Visual Studio Code", "code")
+        self.app_combo.addItem("💬 WhatsApp", "whatsapp")
+        self.app_combo.addItem("🌐 Google Chrome / Edge", "chrome")
+        self.app_combo.addItem("📄 Microsoft Word", "winword")
+        self.app_combo.addItem("⚡ Terminal / PowerShell", "powershell")
+        self.app_combo.addItem("📝 Notepad", "notepad")
+        row2.addWidget(self.app_combo, stretch=1)
+        r_layout.addLayout(row2)
 
         # Content Text
         lbl_content = QLabel("نص التوسيع الكامل:")
@@ -201,12 +216,21 @@ class SnippetEditorViewQt(QWidget):
                 idx = self.group_combo.findData(snippet.group_id)
                 if idx >= 0:
                     self.group_combo.setCurrentIndex(idx)
+            if snippet.app_filter:
+                idx = self.app_combo.findData(snippet.app_filter)
+                if idx >= 0:
+                    self.app_combo.setCurrentIndex(idx)
+                else:
+                    self.app_combo.setCurrentIndex(0)
+            else:
+                self.app_combo.setCurrentIndex(0)
 
     def new_snippet(self, initial_content: str = ""):
         self.selected_snippet_id = None
         self.shortcut_edit.clear()
         self.desc_edit.clear()
         self.content_edit.setPlainText(initial_content)
+        self.app_combo.setCurrentIndex(0)
         self.shortcut_edit.setFocus()
 
     def _save_current(self):
@@ -221,6 +245,7 @@ class SnippetEditorViewQt(QWidget):
 
         gid = self.group_combo.currentData()
         desc = self.desc_edit.text().strip()
+        app_f = self.app_combo.currentData() or ""
 
         snippet = Snippet(
             id=self.selected_snippet_id,
@@ -228,6 +253,7 @@ class SnippetEditorViewQt(QWidget):
             replacement=content,
             description=desc,
             group_id=gid,
+            app_filter=app_f,
         )
 
         try:
@@ -240,6 +266,38 @@ class SnippetEditorViewQt(QWidget):
             self.toast_signal.emit("تم حفظ الاختصار بنجاح! 💾", False)
         except Exception as e:
             self.toast_signal.emit(f"فشل الحفظ: {e}", True)
+
+    def _show_snippet_menu(self, pos):
+        item = self.snippet_list.itemAt(pos)
+        if not item:
+            return
+        sid = item.data(Qt.UserRole)
+        snippet = get_snippet_by_id(sid)
+        if not snippet:
+            return
+
+        menu = QMenu(self)
+        copy_sc = menu.addAction(f"📋 نسخ الاختصار: {snippet.shortcut}")
+        copy_rep = menu.addAction("📄 نسخ نص التوسيع")
+        menu.addSeparator()
+        del_act = menu.addAction("🗑️ حذف الاختصار")
+
+        action = menu.exec(self.snippet_list.mapToGlobal(pos))
+        clipboard = QApplication.clipboard()
+        if action == copy_sc:
+            if clipboard:
+                clipboard.setText(snippet.shortcut)
+                self.toast_signal.emit("تم نسخ رمز الاختصار! 📋", False)
+        elif action == copy_rep:
+            if clipboard:
+                clipboard.setText(snippet.replacement)
+                self.toast_signal.emit("تم نسخ نص التوسيع! 📄", False)
+        elif action == del_act:
+            delete_snippet(snippet.id)
+            self.new_snippet()
+            self.refresh_list()
+            self.snippets_changed_signal.emit()
+            self.toast_signal.emit("تم حذف الاختصار 🗑️", False)
 
     def _delete_current(self):
         if not self.selected_snippet_id:

@@ -62,6 +62,8 @@ class ClipboardPageQt(QWidget):
             }
         """)
         self.clip_list.itemDoubleClicked.connect(self._copy_item)
+        self.clip_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.clip_list.customContextMenuRequested.connect(self._show_clip_menu)
         layout.addWidget(self.clip_list, stretch=1)
 
         # Footer Pagination
@@ -111,6 +113,24 @@ class ClipboardPageQt(QWidget):
         if clipboard:
             clipboard.setText(content)
             self.toast_signal.emit("تم نسخ العنصر إلى الحافظة! 📋", False)
+
+    def _show_clip_menu(self, pos):
+        from PySide6.QtWidgets import QMenu
+        item = self.clip_list.itemAt(pos)
+        if not item:
+            return
+        content = item.data(Qt.UserRole)
+
+        menu = QMenu(self)
+        copy_act = menu.addAction("📋 نسخ إلى الحافظة")
+        menu.addSeparator()
+        clear_act = menu.addAction("🗑️ مسح كامل سجل الحافظة")
+
+        action = menu.exec(self.clip_list.mapToGlobal(pos))
+        if action == copy_act:
+            self._copy_item(item)
+        elif action == clear_act:
+            self._clear_all()
 
     def _clear_all(self):
         clear_clipboard_history()
