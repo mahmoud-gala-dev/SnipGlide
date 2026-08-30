@@ -1,19 +1,9 @@
 @echo off
-setlocal
 cd /d "%~dp0"
 
-if exist ".venv\Scripts\python.exe" (
-    set "PY_EXE=.venv\Scripts\python.exe"
+if exist ".venv\Scripts\pythonw.exe" (
+    start "" ".venv\Scripts\pythonw.exe" app.py
 ) else (
-    set "PY_EXE=python"
+    start "" pythonw app.py
 )
-
-echo Starting SnipGlide Qt6...
-"%PY_EXE%" app.py
-
-if errorlevel 1 (
-    echo.
-    echo Application closed with an error.
-    pause
-)
-endlocal
+exit

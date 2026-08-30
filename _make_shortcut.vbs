@@ -1,8 +1,19 @@
 Set oWS = WScript.CreateObject("WScript.Shell")
-sLinkFile = "C:\Users\mrbea\Desktop\SnipGlide Pro.lnk"
+Set fso = CreateObject("Scripting.FileSystemObject")
+strPath = fso.GetParentFolderName(WScript.ScriptFullName)
+sDesktop = oWS.SpecialFolders("Desktop")
+sLinkFile = sDesktop & "\SnipGlide Pro.lnk"
 Set oLink = oWS.CreateShortcut(sLinkFile)
-oLink.TargetPath = "C:\Users\mrbea\Downloads\New folder (31)\snipglide_python\SnipGlide.vbs"
-oLink.WorkingDirectory = "C:\Users\mrbea\Downloads\New folder (31)\snipglide_python"
+
+If fso.FileExists(strPath & "\.venv\Scripts\pythonw.exe") Then
+    oLink.TargetPath = strPath & "\.venv\Scripts\pythonw.exe"
+    oLink.Arguments = """" & strPath & "\app.py"""
+Else
+    oLink.TargetPath = "pythonw.exe"
+    oLink.Arguments = """" & strPath & "\app.py"""
+End If
+
+oLink.WorkingDirectory = strPath
 oLink.Description = "SnipGlide Pro - Text Expander & Smart Chat Notes"
-oLink.IconLocation = "C:\Users\mrbea\Downloads\New folder (31)\snipglide_python\snipglide\assets\icon.ico, 0"
+oLink.IconLocation = strPath & "\snipglide\assets\icon.ico, 0"
 oLink.Save
