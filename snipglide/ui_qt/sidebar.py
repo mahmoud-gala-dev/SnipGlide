@@ -10,7 +10,7 @@ class SidebarQt(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("sidebarFrame")
-        self.setFixedWidth(230)
+        self.setFixedWidth(250)
         self.setStyleSheet("""
             QFrame#sidebarFrame {
                 background-color: #0c1317;
@@ -24,11 +24,11 @@ class SidebarQt(QFrame):
 
         # App Brand Header
         brand_lbl = QLabel("SnipGlide")
-        brand_lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
+        brand_lbl.setStyleSheet("font-size: 26px; font-weight: bold; color: white;")
         layout.addWidget(brand_lbl)
 
         sub_lbl = QLabel("Text Expander Pro")
-        sub_lbl.setStyleSheet("font-size: 12px; color: #8696a0; margin-bottom: 20px;")
+        sub_lbl.setStyleSheet("font-size: 13px; color: #8696a0; margin-bottom: 20px;")
         layout.addWidget(sub_lbl)
 
         self.btn_group = QButtonGroup(self)
@@ -36,16 +36,12 @@ class SidebarQt(QFrame):
         self.buttons = {}
 
         pages = [
-            ("Dashboard", "📊 Dashboard", "#2563eb"),
-            ("Snippets", "✂️ Snippets", "#16a34a"),
-            ("Notes", "📝 Notes", "#f59e0b"),
-            ("ChatNotes", "💬 Chat Notes", "#25D366"),
-            ("Search", "🔍 Search", "#14b8a6"),
-            ("Clipboard", "📋 Clipboard", "#06b6d4"),
-            ("AIAssistant", "🤖 AI Assistant", "#8b5cf6"),
-            ("Settings", "⚙️ Settings", "#64748b"),
-            ("Health", "🩺 Health", "#0f766e"),
-            ("Marketplace", "🛍️ Marketplace", "#ef4444"),
+            ("Dashboard", "📊 لوحة التحكم (Dashboard)", "#2563eb"),
+            ("Snippets", "✂️ الاختصارات (Snippets)", "#16a34a"),
+            ("Notes", "📝 الملاحظات (Notes)", "#f59e0b"),
+            ("ChatNotes", "💬 شات نوت (Chat Notes)", "#25D366"),
+            ("Search", "🔍 البحث الموحد (Search)", "#14b8a6"),
+            ("Clipboard", "📋 سجل الحافظة (Clipboard)", "#06b6d4"),
         ]
 
         for page_id, title, color in pages:
@@ -53,15 +49,15 @@ class SidebarQt(QFrame):
             btn.setProperty("class", "navButton")
             btn.setCheckable(True)
             btn.setCursor(QCursor(Qt.PointingHandCursor))
-            btn.setFixedHeight(42)
+            btn.setFixedHeight(46)
             btn.setStyleSheet("""
                 QPushButton {
                     text-align: left;
-                    padding-left: 14px;
+                    padding-left: 16px;
                     border-radius: 8px;
                     background-color: transparent;
                     color: #8696a0;
-                    font-size: 13px;
+                    font-size: 14px;
                     font-weight: bold;
                     border: none;
                 }

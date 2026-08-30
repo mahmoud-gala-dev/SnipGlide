@@ -1,6 +1,7 @@
 import sys
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
 
 from snipglide.core.config import APP_NAME, load_settings, save_settings
 from snipglide.database.connection import initialize_database
@@ -11,12 +12,15 @@ from snipglide.utils.helpers import download_and_load_arabic_font
 from snipglide.utils.logger import logger
 
 class AppCoordinatorQt:
-    def __init__(self):
+    def __init__(self, app: QApplication):
+        self.app = app
         initialize_database()
         self.settings = load_settings()
-        
-        # Load Google Arabic Font
-        download_and_load_arabic_font("Tajawal")
+        self.window = None
+
+        # Load Google Arabic Font and set globally
+        self.font_family = download_and_load_arabic_font("Tajawal")
+        self.app.setFont(QFont(self.font_family, 12))
 
         # Initialize background engine
         self.engine = ExpansionEngine(
@@ -31,24 +35,26 @@ class AppCoordinatorQt:
         self.clipboard_monitor.start()
 
     def get_current_settings(self) -> dict:
-        if hasattr(self, "window") and self.window and hasattr(self.window, "settings"):
+        if self.window and hasattr(self.window, "settings"):
             return self.window.settings
         return self.settings
 
     def run(self):
-        # Enable High DPI scaling
-        app = QApplication.instance() or QApplication(sys.argv)
-        app.setApplicationName(APP_NAME)
-
         self.window = MainWindowQt(
             engine_toggle_callback=self.toggle_engine,
             snippets_changed_callback=self.notify_snippets_changed,
+            font_family=self.font_family,
         )
         self.window.show()
         self.window.raise_()
         self.window.activateWindow()
 
-        sys.exit(app.exec())
+        exit_code = self.app.exec()
+        if self.engine:
+            self.engine.stop()
+        if self.clipboard_monitor:
+            self.clipboard_monitor.stop()
+        sys.exit(exit_code)
 
     def toggle_engine(self):
         if self.engine.is_running:
@@ -60,5 +66,10 @@ class AppCoordinatorQt:
         self.engine.reload_snippets()
 
 def run_app():
-    coordinator = AppCoordinatorQt()
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication(sys.argv)
+    app.setApplicationName(APP_NAME)
+
+    coordinator = AppCoordinatorQt(app)
     coordinator.run()

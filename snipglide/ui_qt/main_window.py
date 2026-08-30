@@ -16,18 +16,20 @@ from snipglide.ui_qt.search_page import SearchPageQt
 from snipglide.core.config import load_settings, save_settings, APP_NAME, get_arabic_font_family
 
 class MainWindowQt(QMainWindow):
-    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None):
+    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None):
         super().__init__()
         self.engine_toggle_callback = engine_toggle_callback
         self.snippets_changed_callback = snippets_changed_callback
         self.settings = load_settings()
+        self.font_family = font_family or get_arabic_font_family()
 
         self.setWindowTitle(APP_NAME)
-        self.resize(1280, 780)
-        self.setMinimumSize(1100, 680)
+        # Enlarge main frame for comfortable viewing
+        self.resize(1380, 840)
+        self.setMinimumSize(1150, 720)
 
-        # Apply Global QSS
-        self.setStyleSheet(get_stylesheet(font_family=get_arabic_font_family(), base_font_size=14, is_dark=True))
+        # Apply Global QSS with Google Arabic font and enlarged base size
+        self.setStyleSheet(get_stylesheet(font_family=self.font_family, base_font_size=15, is_dark=True))
 
         self._setup_ui()
 
