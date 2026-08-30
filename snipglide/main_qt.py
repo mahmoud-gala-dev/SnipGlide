@@ -66,10 +66,17 @@ class AppCoordinatorQt:
         self.engine.reload_snippets()
 
 def run_app():
+    from pathlib import Path
+    from PySide6.QtGui import QIcon
+
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
+
+    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
 
     coordinator = AppCoordinatorQt(app)
     coordinator.run()

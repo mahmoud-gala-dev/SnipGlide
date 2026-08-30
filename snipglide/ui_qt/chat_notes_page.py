@@ -1,11 +1,12 @@
-from datetime import datetime
+import html
 import re
+from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QFont, QCursor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QPlainTextEdit, QScrollArea, QFrame, QComboBox, QMenu, QMessageBox,
-    QSizePolicy, QApplication
+    QApplication
 )
 
 from snipglide.database.chat_note_repo import (
@@ -34,7 +35,7 @@ class ChatNotesPageQt(QWidget):
         self.starred_filter_active = False
         self._sections_cache = []
         self._notes_cache = []
-        self._is_dirty = True
+        self._expanded_note_ids = set()
 
         # Load font settings
         self.chat_font_size = self._get_saved_font_size()
@@ -48,8 +49,8 @@ class ChatNotesPageQt(QWidget):
             except Exception:
                 pass
 
-        QTimer.singleShot(50, self.refresh_sections)
-        QTimer.singleShot(80, self.refresh_chat)
+        QTimer.singleShot(30, self.refresh_sections)
+        QTimer.singleShot(60, self.refresh_chat)
 
     def _get_saved_font_size(self) -> int:
         try:
@@ -67,95 +68,104 @@ class ChatNotesPageQt(QWidget):
 
     def _setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(15, 10, 15, 15)
-        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(18, 12, 18, 18)
+        main_layout.setSpacing(10)
 
-        # ── 1. Header ──
+        # ── 1. Top Header ──
         header = QFrame()
         header.setObjectName("headerFrame")
-        header.setProperty("class", "cardFrame")
-        header.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 6px;")
+        header.setStyleSheet("""
+            QFrame#headerFrame {
+                background-color: #111b21;
+                border: 1.5px solid #2a3942;
+                border-radius: 14px;
+                padding: 6px;
+            }
+        """)
         h_layout = QHBoxLayout(header)
-        h_layout.setContentsMargins(12, 6, 12, 6)
+        h_layout.setContentsMargins(14, 8, 14, 8)
+        h_layout.setSpacing(10)
 
-        # Title & Avatar
+        # Avatar
         avatar_lbl = QLabel("💬")
-        avatar_lbl.setStyleSheet("font-size: 22px; background-color: #25D366; color: white; border-radius: 19px; padding: 4px 8px;")
+        avatar_lbl.setStyleSheet("font-size: 24px; background-color: #25D366; color: white; border-radius: 20px; padding: 4px 10px;")
         h_layout.addWidget(avatar_lbl)
 
+        # Title and Count Badge
         title_box = QVBoxLayout()
         title_box.setSpacing(2)
         self.title_lbl = QLabel("شات الملاحظات السريعة (Quick Chat Notes)")
-        self.title_lbl.setStyleSheet(f"font-size: 16px; font-weight: bold; font-family: '{self.chat_font_family}'; color: #e9edef;")
-        self.count_badge = QLabel("سجل ملاحظاتك وأفكارك بأسلوب محادثات الواتساب الأنيق")
-        self.count_badge.setStyleSheet(f"font-size: 12px; font-family: '{self.chat_font_family}'; color: #8696a0;")
+        self.title_lbl.setStyleSheet(f"font-size: 17px; font-weight: bold; font-family: '{self.chat_font_family}'; color: #f0f2f5;")
+        self.count_badge = QLabel("سجل أفكارك وملاحظاتك بأسلوب محادثات الواتساب الأنيق")
+        self.count_badge.setStyleSheet(f"font-size: 13px; font-family: '{self.chat_font_family}'; color: #94a3b8;")
         title_box.addWidget(self.title_lbl)
         title_box.addWidget(self.count_badge)
         h_layout.addLayout(title_box)
 
         h_layout.addStretch()
 
-        # Font controls: [A-] [22px] [A+]
+        # Font Controls: [A-] [22px] [A+]
         font_box = QFrame()
-        font_box.setStyleSheet("background-color: #1f2c34; border-radius: 8px; padding: 2px;")
+        font_box.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; padding: 2px;")
         fb_layout = QHBoxLayout(font_box)
-        fb_layout.setContentsMargins(4, 2, 4, 2)
-        fb_layout.setSpacing(4)
+        fb_layout.setContentsMargins(6, 3, 6, 3)
+        fb_layout.setSpacing(6)
 
         down_btn = QPushButton("A-")
-        down_btn.setFixedSize(28, 28)
+        down_btn.setFixedSize(32, 32)
         down_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        down_btn.setStyleSheet("background-color: transparent; font-weight: bold; border: none; color: white;")
+        down_btn.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px; border: none; color: #f0f2f5;")
         down_btn.clicked.connect(lambda: self._change_font_size(-1))
         fb_layout.addWidget(down_btn)
 
         self.font_size_lbl = QLabel(f"{self.chat_font_size}px")
-        self.font_size_lbl.setStyleSheet("font-weight: bold; font-size: 12px; color: #25D366;")
+        self.font_size_lbl.setStyleSheet("font-weight: bold; font-size: 14px; color: #25D366;")
         fb_layout.addWidget(self.font_size_lbl)
 
         up_btn = QPushButton("A+")
-        up_btn.setFixedSize(28, 28)
+        up_btn.setFixedSize(32, 32)
         up_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        up_btn.setStyleSheet("background-color: transparent; font-weight: bold; border: none; color: white;")
+        up_btn.setStyleSheet("background-color: transparent; font-weight: bold; font-size: 14px; border: none; color: #f0f2f5;")
         up_btn.clicked.connect(lambda: self._change_font_size(1))
         fb_layout.addWidget(up_btn)
         h_layout.addWidget(font_box)
 
-        # Font family selector
+        # Font Selector Dropdown
         self.font_combo = QComboBox()
         self.font_combo.addItems(["Tajawal", "Cairo", "Almarai", "Segoe UI", "Tahoma"])
         self.font_combo.setCurrentText(self.chat_font_family if self.chat_font_family in ["Tajawal", "Cairo", "Almarai", "Segoe UI", "Tahoma"] else "Tajawal")
-        self.font_combo.setFixedHeight(32)
+        self.font_combo.setFixedHeight(38)
+        self.font_combo.setMinimumWidth(120)
         self.font_combo.currentTextChanged.connect(self._on_font_family_change)
         h_layout.addWidget(self.font_combo)
 
-        # Search Bar
+        # Visible Search Box
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("🔍 بحث في الملاحظات...")
-        self.search_edit.setFixedHeight(32)
-        self.search_edit.setFixedWidth(160)
+        self.search_edit.setPlaceholderText("🔍 بحث وتمييز في الرسائل...")
+        self.search_edit.setFixedHeight(38)
+        self.search_edit.setFixedWidth(200)
         self.search_edit.textChanged.connect(self._on_search_changed)
         h_layout.addWidget(self.search_edit)
 
-        # Star Filter Button
+        # Star Filter
         self.star_filter_btn = QPushButton("⭐ المفضلة")
-        self.star_filter_btn.setFixedHeight(32)
+        self.star_filter_btn.setFixedHeight(38)
         self.star_filter_btn.setCheckable(True)
-        self.star_filter_btn.setStyleSheet("background-color: #1f2c34; color: white; border-radius: 8px; padding: 4px 12px;")
+        self.star_filter_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 14px; font-weight: bold;")
         self.star_filter_btn.clicked.connect(self._toggle_star_filter)
         h_layout.addWidget(self.star_filter_btn)
 
         # Seed Demo Button
         demo_btn = QPushButton("🌱 عينات")
-        demo_btn.setFixedHeight(32)
-        demo_btn.setStyleSheet("background-color: #1f2c34; color: white; border-radius: 8px; padding: 4px 10px;")
+        demo_btn.setFixedHeight(38)
+        demo_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 12px; font-weight: bold;")
         demo_btn.clicked.connect(self._seed_demo_data)
         h_layout.addWidget(demo_btn)
 
-        # Clear All Button
+        # Clear Button
         clear_btn = QPushButton("🗑️ مسح")
-        clear_btn.setFixedHeight(32)
-        clear_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 8px; padding: 4px 10px;")
+        clear_btn.setFixedHeight(38)
+        clear_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 10px; padding: 4px 14px; border: none;")
         clear_btn.clicked.connect(self._confirm_clear_all)
         h_layout.addWidget(clear_btn)
 
@@ -163,7 +173,7 @@ class ChatNotesPageQt(QWidget):
 
         # ── 2. Sections Bar ──
         self.sections_scroll = QScrollArea()
-        self.sections_scroll.setFixedHeight(46)
+        self.sections_scroll.setFixedHeight(50)
         self.sections_scroll.setWidgetResizable(True)
         self.sections_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.sections_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
@@ -172,7 +182,7 @@ class ChatNotesPageQt(QWidget):
         self.sections_container = QWidget()
         self.sections_layout = QHBoxLayout(self.sections_container)
         self.sections_layout.setContentsMargins(0, 4, 0, 4)
-        self.sections_layout.setSpacing(6)
+        self.sections_layout.setSpacing(8)
         self.sections_layout.setAlignment(Qt.AlignLeft)
         self.sections_scroll.setWidget(self.sections_container)
         main_layout.addWidget(self.sections_scroll)
@@ -180,53 +190,94 @@ class ChatNotesPageQt(QWidget):
         # ── 3. Chat Feed Area ──
         self.chat_scroll = QScrollArea()
         self.chat_scroll.setWidgetResizable(True)
-        self.chat_scroll.setStyleSheet("background-color: #0b141a; border-radius: 12px; border: 1px solid #1f2c34;")
+        self.chat_scroll.setStyleSheet("background-color: #0b141a; border-radius: 14px; border: 2px solid #202c33;")
 
         self.chat_feed_container = QWidget()
         self.chat_feed_container.setStyleSheet("background-color: transparent;")
         self.chat_feed_layout = QVBoxLayout(self.chat_feed_container)
-        self.chat_feed_layout.setContentsMargins(15, 15, 15, 15)
-        self.chat_feed_layout.setSpacing(8)
+        self.chat_feed_layout.setContentsMargins(18, 18, 18, 18)
+        self.chat_feed_layout.setSpacing(10)
         self.chat_feed_layout.setAlignment(Qt.AlignTop)
         self.chat_scroll.setWidget(self.chat_feed_container)
         main_layout.addWidget(self.chat_scroll, stretch=1)
 
-        # ── 4. Compose Bar ──
+        # ── 4. Prominent Input Compose Bar ──
         compose_frame = QFrame()
-        compose_frame.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 6px;")
+        compose_frame.setStyleSheet("""
+            QFrame {
+                background-color: #111b21;
+                border: 2px solid #2a3942;
+                border-radius: 14px;
+                padding: 8px;
+            }
+        """)
         comp_layout = QHBoxLayout(compose_frame)
-        comp_layout.setContentsMargins(10, 6, 10, 6)
-        comp_layout.setSpacing(8)
+        comp_layout.setContentsMargins(12, 8, 12, 8)
+        comp_layout.setSpacing(10)
 
+        # Section Selector
         self.compose_sec_combo = QComboBox()
-        self.compose_sec_combo.setFixedHeight(40)
-        self.compose_sec_combo.setMinimumWidth(110)
+        self.compose_sec_combo.setFixedHeight(48)
+        self.compose_sec_combo.setMinimumWidth(130)
         comp_layout.addWidget(self.compose_sec_combo)
 
+        # Timestamp button
         time_btn = QPushButton("🕒")
-        time_btn.setFixedSize(40, 40)
-        time_btn.setStyleSheet("background-color: #1f2c34; border-radius: 8px; font-size: 16px;")
+        time_btn.setFixedSize(48, 48)
+        time_btn.setToolTip("إدراج التاريخ والوقت الحالي")
+        time_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 18px; color: white;")
         time_btn.clicked.connect(self._insert_timestamp)
         comp_layout.addWidget(time_btn)
 
+        # Star toggle button
         self.star_new_btn = QPushButton("⭐")
-        self.star_new_btn.setFixedSize(40, 40)
+        self.star_new_btn.setFixedSize(48, 48)
         self.star_new_btn.setCheckable(True)
-        self.star_new_btn.setStyleSheet("background-color: #1f2c34; border-radius: 8px; font-size: 16px;")
+        self.star_new_btn.setToolTip("تمييز الملاحظة كمفضلة")
+        self.star_new_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 18px; color: white;")
         comp_layout.addWidget(self.star_new_btn)
 
+        # Message Input (Prominent Border)
         self.message_input = QPlainTextEdit()
-        self.message_input.setFixedHeight(54)
+        self.message_input.setFixedHeight(62)
         self.message_input.setPlaceholderText("اكتب ملاحظتك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)")
-        self.message_input.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{self.chat_font_family}'; background-color: #2a3942; border-radius: 8px; padding: 8px; color: white;")
+        self.message_input.setStyleSheet(f"""
+            QPlainTextEdit {{
+                font-size: {self.chat_font_size}px;
+                font-family: '{self.chat_font_family}';
+                background-color: #202c33;
+                border: 2px solid #3b4a54;
+                border-radius: 10px;
+                padding: 10px 14px;
+                color: #f0f2f5;
+            }}
+            QPlainTextEdit:focus {{
+                background-color: #2a3942;
+                border: 2px solid #25D366;
+            }}
+        """)
         self.message_input.installEventFilter(self)
         comp_layout.addWidget(self.message_input, stretch=1)
 
+        # Send Button
         send_btn = QPushButton("➤ إرسال")
-        send_btn.setFixedHeight(44)
-        send_btn.setFixedWidth(90)
+        send_btn.setFixedHeight(50)
+        send_btn.setFixedWidth(110)
         send_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        send_btn.setStyleSheet(f"background-color: #25D366; color: white; font-weight: bold; font-size: 14px; font-family: '{self.chat_font_family}'; border-radius: 8px;")
+        send_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #25D366;
+                color: white;
+                font-weight: bold;
+                font-size: 16px;
+                font-family: '{self.chat_font_family}';
+                border-radius: 10px;
+                border: none;
+            }}
+            QPushButton:hover {{
+                background-color: #1da851;
+            }}
+        """)
         send_btn.clicked.connect(self._send_message)
         comp_layout.addWidget(send_btn)
 
@@ -245,7 +296,21 @@ class ChatNotesPageQt(QWidget):
             self.chat_font_size = new_size
             set_note_setting("chat_font_size", str(new_size))
             self.font_size_lbl.setText(f"{new_size}px")
-            self.message_input.setStyleSheet(f"font-size: {new_size}px; font-family: '{self.chat_font_family}'; background-color: #2a3942; border-radius: 8px; padding: 8px; color: white;")
+            self.message_input.setStyleSheet(f"""
+                QPlainTextEdit {{
+                    font-size: {new_size}px;
+                    font-family: '{self.chat_font_family}';
+                    background-color: #202c33;
+                    border: 2px solid #3b4a54;
+                    border-radius: 10px;
+                    padding: 10px 14px;
+                    color: #f0f2f5;
+                }}
+                QPlainTextEdit:focus {{
+                    background-color: #2a3942;
+                    border: 2px solid #25D366;
+                }}
+            """)
             self.refresh_chat(scroll_to_bottom=False)
 
     def _on_font_family_change(self, family: str):
@@ -253,14 +318,27 @@ class ChatNotesPageQt(QWidget):
         self.chat_font_family = family
         set_arabic_font_family(family)
         set_note_setting("chat_font_family", family)
-        self.title_lbl.setStyleSheet(f"font-size: 16px; font-weight: bold; font-family: '{family}'; color: #e9edef;")
-        self.count_badge.setStyleSheet(f"font-size: 12px; font-family: '{family}'; color: #8696a0;")
-        self.message_input.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{family}'; background-color: #2a3942; border-radius: 8px; padding: 8px; color: white;")
+        self.title_lbl.setStyleSheet(f"font-size: 17px; font-weight: bold; font-family: '{family}'; color: #f0f2f5;")
+        self.count_badge.setStyleSheet(f"font-size: 13px; font-family: '{family}'; color: #94a3b8;")
+        self.message_input.setStyleSheet(f"""
+            QPlainTextEdit {{
+                font-size: {self.chat_font_size}px;
+                font-family: '{family}';
+                background-color: #202c33;
+                border: 2px solid #3b4a54;
+                border-radius: 10px;
+                padding: 10px 14px;
+                color: #f0f2f5;
+            }}
+            QPlainTextEdit:focus {{
+                background-color: #2a3942;
+                border: 2px solid #25D366;
+            }}
+        """)
         self.refresh_sections()
         self.refresh_chat(scroll_to_bottom=False)
 
     def refresh_sections(self):
-        # Clear existing section buttons
         while self.sections_layout.count():
             item = self.sections_layout.takeAt(0)
             if item.widget():
@@ -273,36 +351,33 @@ class ChatNotesPageQt(QWidget):
         for s in sections:
             self.compose_sec_combo.addItem(f"{s.icon} {s.name}", s.id)
 
-        # All button
         all_count = get_chat_notes_count()
         all_btn = QPushButton(f"💬 الكل ({all_count})")
-        all_btn.setFixedHeight(32)
+        all_btn.setFixedHeight(36)
         all_btn.setCursor(QCursor(Qt.PointingHandCursor))
         is_all = self.selected_section_id is None
-        all_style = "background-color: #25D366; color: white; font-weight: bold;" if is_all else "background-color: #1f2c34; color: #e9edef;"
-        all_btn.setStyleSheet(f"{all_style} border-radius: 16px; padding: 4px 16px; font-size: 12px; font-family: '{self.chat_font_family}';")
+        all_style = "background-color: #25D366; color: white; font-weight: bold; border: none;" if is_all else "background-color: #182229; color: #f0f2f5; border: 1.5px solid #2a3942;"
+        all_btn.setStyleSheet(f"{all_style} border-radius: 18px; padding: 4px 18px; font-size: 13px; font-family: '{self.chat_font_family}';")
         all_btn.clicked.connect(lambda: self._select_section(None))
         self.sections_layout.addWidget(all_btn)
 
-        # Dynamic Section Pills
         for sec in sections:
             count = get_chat_notes_count(section_id=sec.id)
             btn = QPushButton(f"{sec.icon} {sec.name} ({count})")
-            btn.setFixedHeight(32)
+            btn.setFixedHeight(36)
             btn.setCursor(QCursor(Qt.PointingHandCursor))
             is_active = self.selected_section_id == sec.id
-            btn_style = f"background-color: {sec.color}; color: white; font-weight: bold;" if is_active else "background-color: #1f2c34; color: #e9edef;"
-            btn.setStyleSheet(f"{btn_style} border-radius: 16px; padding: 4px 14px; font-size: 12px; font-family: '{self.chat_font_family}';")
+            btn_style = f"background-color: {sec.color}; color: white; font-weight: bold; border: none;" if is_active else "background-color: #182229; color: #f0f2f5; border: 1.5px solid #2a3942;"
+            btn.setStyleSheet(f"{btn_style} border-radius: 18px; padding: 4px 16px; font-size: 13px; font-family: '{self.chat_font_family}';")
             btn.clicked.connect(lambda _, s=sec: self._select_section(s.id))
             if sec.id != 1:
                 btn.setContextMenuPolicy(Qt.CustomContextMenu)
                 btn.customContextMenuRequested.connect(lambda pos, s=sec, b=btn: self._show_section_menu(b, pos, s))
             self.sections_layout.addWidget(btn)
 
-        # Add section button
         add_btn = QPushButton("➕ قسم جديد")
-        add_btn.setFixedHeight(32)
-        add_btn.setStyleSheet(f"background-color: #2a3942; color: #e9edef; border-radius: 16px; padding: 4px 14px; font-size: 12px; font-family: '{self.chat_font_family}';")
+        add_btn.setFixedHeight(36)
+        add_btn.setStyleSheet(f"background-color: #202c33; border: 1.5px dashed #3b4a54; color: #f0f2f5; border-radius: 18px; padding: 4px 16px; font-size: 13px; font-family: '{self.chat_font_family}'; font-weight: bold;")
         add_btn.clicked.connect(self._prompt_add_section)
         self.sections_layout.addWidget(add_btn)
 
@@ -355,14 +430,14 @@ class ChatNotesPageQt(QWidget):
         self.message_input.setFocus()
 
     def _on_search_changed(self, text: str):
-        self.refresh_chat()
+        self.refresh_chat(scroll_to_bottom=False)
 
     def _toggle_star_filter(self):
         self.starred_filter_active = self.star_filter_btn.isChecked()
         if self.starred_filter_active:
-            self.star_filter_btn.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; border-radius: 8px; padding: 4px 12px;")
+            self.star_filter_btn.setStyleSheet("background-color: #f59e0b; border: 1.5px solid #d97706; color: white; font-weight: bold; border-radius: 10px; padding: 4px 14px;")
         else:
-            self.star_filter_btn.setStyleSheet("background-color: #1f2c34; color: white; border-radius: 8px; padding: 4px 12px;")
+            self.star_filter_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 14px; font-weight: bold;")
         self.refresh_chat()
 
     def _send_message(self):
@@ -384,7 +459,6 @@ class ChatNotesPageQt(QWidget):
             self.toast_signal.emit(f"فشل الحفظ: {e}", True)
 
     def refresh_chat(self, scroll_to_bottom: bool = True):
-        # Clear chat feed
         while self.chat_feed_layout.count():
             item = self.chat_feed_layout.takeAt(0)
             if item.widget():
@@ -397,7 +471,6 @@ class ChatNotesPageQt(QWidget):
             section_id=self.selected_section_id,
         )
         self._notes_cache = notes
-        self._is_dirty = False
 
         total_count = get_chat_notes_count(section_id=self.selected_section_id)
         current_count = len(notes)
@@ -412,43 +485,42 @@ class ChatNotesPageQt(QWidget):
         if not notes:
             empty_lbl = QLabel("صندوق الملاحظات فارغ.\nاكتب فكرتك أو ملاحظتك في صندوق الكتابة بالأسفل واضغط Enter لحفظها فوراً!")
             empty_lbl.setAlignment(Qt.AlignCenter)
-            empty_lbl.setStyleSheet(f"color: #8696a0; font-size: 15px; font-family: '{self.chat_font_family}'; padding: 40px;")
+            empty_lbl.setStyleSheet(f"color: #94a3b8; font-size: 16px; font-family: '{self.chat_font_family}'; padding: 50px;")
             self.chat_feed_layout.addWidget(empty_lbl)
             return
 
         last_date_str = None
         for note in notes:
-            # Date divider
             note_date_str = self._format_date_header(note.created_at)
             if note_date_str != last_date_str:
                 div = QLabel(f"  {note_date_str}  ")
                 div.setAlignment(Qt.AlignCenter)
-                div.setStyleSheet(f"background-color: #182229; color: #8696a0; font-size: 12px; font-weight: bold; border-radius: 10px; padding: 4px 12px; font-family: '{self.chat_font_family}';")
+                div.setStyleSheet(f"background-color: #182229; color: #94a3b8; font-size: 13px; font-weight: bold; border-radius: 12px; padding: 6px 16px; font-family: '{self.chat_font_family}'; border: 1px solid #2a3942;")
                 self.chat_feed_layout.addWidget(div, alignment=Qt.AlignCenter)
                 last_date_str = note_date_str
 
-            bubble = self._create_bubble_widget(note)
+            bubble = self._create_bubble_widget(note, search_query=query)
             self.chat_feed_layout.addWidget(bubble, alignment=Qt.AlignRight)
 
         if scroll_to_bottom:
             QTimer.singleShot(30, self._scroll_to_bottom)
 
-    def _create_bubble_widget(self, note: ChatNote) -> QWidget:
+    def _create_bubble_widget(self, note: ChatNote, search_query: str = "") -> QWidget:
         has_arabic = bool(re.search(r"[\u0600-\u06FF]", note.content))
         font_family = self.chat_font_family if has_arabic else "Segoe UI"
         align = Qt.AlignRight if has_arabic else Qt.AlignLeft
 
         bubble = QFrame()
         bg_color = "#005c4b" if not note.is_starred else "#064e3b"
-        border = "border: 1px solid #f59e0b;" if note.is_starred else "border: none;"
-        bubble.setStyleSheet(f"QFrame {{ background-color: {bg_color}; border-radius: 14px; {border} }}")
-        bubble.setMaximumWidth(700)
+        border = "border: 2px solid #f59e0b;" if note.is_starred else "border: 1px solid #004d3e;"
+        bubble.setStyleSheet(f"QFrame {{ background-color: {bg_color}; border-radius: 16px; {border} }}")
+        bubble.setMaximumWidth(780)
 
         b_layout = QVBoxLayout(bubble)
-        b_layout.setContentsMargins(14, 8, 14, 8)
+        b_layout.setContentsMargins(16, 10, 16, 10)
         b_layout.setSpacing(6)
 
-        # Top tag if starred or section
+        # Top tag
         sec_name = None
         if note.section_id and self.selected_section_id is None:
             s_obj = next((s for s in self._sections_cache if s.id == note.section_id), None)
@@ -460,53 +532,73 @@ class ChatNotesPageQt(QWidget):
             top_layout.setSpacing(8)
             if note.is_starred:
                 star_tag = QLabel("⭐ مميزة")
-                star_tag.setStyleSheet("color: #fde047; font-size: 12px; font-weight: bold; border: none;")
+                star_tag.setStyleSheet("color: #fde047; font-size: 13px; font-weight: bold; border: none;")
                 top_layout.addWidget(star_tag)
             if sec_name:
                 sec_tag = QLabel(sec_name)
-                sec_tag.setStyleSheet("color: #a7f3d0; font-size: 12px; font-weight: bold; border: none;")
+                sec_tag.setStyleSheet("color: #a7f3d0; font-size: 13px; font-weight: bold; border: none;")
                 top_layout.addWidget(sec_tag)
             top_layout.addStretch()
             b_layout.addLayout(top_layout)
 
-        # Note text (22px Large Default font)
-        content_lbl = QLabel(note.content)
+        # Truncation logic (Read more / Read less)
+        is_long = len(note.content) > 220 or note.content.count("\n") >= 4
+        is_expanded = note.id in self._expanded_note_ids
+
+        display_text = note.content
+        if is_long and not is_expanded and not search_query:
+            display_text = note.content[:200] + "..."
+
+        # Highlight Search Query with vivid highlight
+        formatted_html = self._format_highlighted_text(display_text, search_query)
+
+        content_lbl = QLabel()
+        content_lbl.setTextFormat(Qt.RichText)
+        content_lbl.setText(formatted_html)
         content_lbl.setWordWrap(True)
         content_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         content_lbl.setAlignment(align)
-        content_lbl.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{font_family}'; color: #e9edef; line-height: 1.4; border: none; background: transparent;")
+        content_lbl.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{font_family}'; color: #f0f2f5; line-height: 1.4; border: none; background: transparent;")
         b_layout.addWidget(content_lbl)
 
-        # Bottom Bar: Actions + Time + Checkmarks
+        # "Read more / Read less" Button
+        if is_long and not search_query:
+            more_btn = QPushButton("عرض أقل ▴" if is_expanded else "عرض المزيد ▾")
+            more_btn.setCursor(QCursor(Qt.PointingHandCursor))
+            more_btn.setStyleSheet("color: #6ee7b7; font-size: 13px; font-weight: bold; border: none; background: transparent; text-align: right; padding: 2px;")
+            more_btn.clicked.connect(lambda _, nid=note.id: self._toggle_expand_note(nid))
+            b_layout.addWidget(more_btn)
+
+        # Bottom Bar: Actions + Time
         bottom_layout = QHBoxLayout()
-        bottom_layout.setSpacing(4)
+        bottom_layout.setSpacing(6)
 
         copy_btn = QPushButton("📋 نسخ")
-        copy_btn.setFixedSize(56, 24)
+        copy_btn.setFixedSize(62, 26)
         copy_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        copy_btn.setStyleSheet("background-color: #128c7e; color: white; font-size: 11px; border-radius: 6px; border: none;")
+        copy_btn.setStyleSheet("background-color: #128c7e; color: white; font-size: 12px; font-weight: bold; border-radius: 6px; border: none;")
         copy_btn.clicked.connect(lambda _, n=note: self._copy_note(n))
         bottom_layout.addWidget(copy_btn)
 
         star_btn = QPushButton("⭐" if note.is_starred else "☆")
-        star_btn.setFixedSize(28, 24)
+        star_btn.setFixedSize(32, 26)
         star_btn.setCursor(QCursor(Qt.PointingHandCursor))
         star_color = "#fde047" if note.is_starred else "white"
-        star_btn.setStyleSheet(f"background-color: #128c7e; color: {star_color}; font-size: 12px; border-radius: 6px; border: none;")
+        star_btn.setStyleSheet(f"background-color: #128c7e; color: {star_color}; font-size: 13px; border-radius: 6px; border: none;")
         star_btn.clicked.connect(lambda _, n=note: self._toggle_star_note(n))
         bottom_layout.addWidget(star_btn)
 
         snip_btn = QPushButton("✂️ اختصار")
-        snip_btn.setFixedSize(65, 24)
+        snip_btn.setFixedSize(74, 26)
         snip_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        snip_btn.setStyleSheet("background-color: #128c7e; color: white; font-size: 11px; border-radius: 6px; border: none;")
+        snip_btn.setStyleSheet("background-color: #128c7e; color: white; font-size: 12px; font-weight: bold; border-radius: 6px; border: none;")
         snip_btn.clicked.connect(lambda _, n=note: self._convert_to_snippet(n))
         bottom_layout.addWidget(snip_btn)
 
         del_btn = QPushButton("🗑️")
-        del_btn.setFixedSize(28, 24)
+        del_btn.setFixedSize(32, 26)
         del_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        del_btn.setStyleSheet("background-color: #128c7e; color: #f87171; font-size: 11px; border-radius: 6px; border: none;")
+        del_btn.setStyleSheet("background-color: #128c7e; color: #fca5a5; font-size: 12px; border-radius: 6px; border: none;")
         del_btn.clicked.connect(lambda _, n=note: self._delete_note_instant(n))
         bottom_layout.addWidget(del_btn)
 
@@ -514,7 +606,7 @@ class ChatNotesPageQt(QWidget):
 
         time_str = self._format_note_time(note.created_at)
         time_lbl = QLabel(f"{time_str} ✓✓")
-        time_lbl.setStyleSheet("color: #8696a0; font-size: 11px; border: none;")
+        time_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: bold; border: none;")
         bottom_layout.addWidget(time_lbl)
 
         b_layout.addLayout(bottom_layout)
@@ -524,6 +616,25 @@ class ChatNotesPageQt(QWidget):
         bubble.customContextMenuRequested.connect(lambda pos, n=note, b=bubble: self._show_bubble_menu(b, pos, n))
 
         return bubble
+
+    def _format_highlighted_text(self, text: str, query: str) -> str:
+        escaped = html.escape(text).replace("\n", "<br>")
+        if not query:
+            return escaped
+
+        pattern = re.compile(re.escape(html.escape(query)), re.IGNORECASE)
+        highlighted = pattern.sub(
+            lambda m: f'<span style="background-color: #facc15; color: #0f172a; font-weight: 800; border-radius: 4px; padding: 1px 5px;">{m.group(0)}</span>',
+            escaped
+        )
+        return highlighted
+
+    def _toggle_expand_note(self, note_id: int):
+        if note_id in self._expanded_note_ids:
+            self._expanded_note_ids.remove(note_id)
+        else:
+            self._expanded_note_ids.add(note_id)
+        self.refresh_chat(scroll_to_bottom=False)
 
     def _show_bubble_menu(self, widget, pos, note: ChatNote):
         menu = QMenu(self)

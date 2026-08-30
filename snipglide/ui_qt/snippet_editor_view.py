@@ -39,27 +39,27 @@ class SnippetEditorViewQt(QWidget):
 
         # ── Left List Pane ──
         left_pane = QFrame()
-        left_pane.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 8px;")
+        left_pane.setStyleSheet("background-color: #111b21; border-radius: 14px; padding: 10px; border: 1.5px solid #2a3942;")
         l_layout = QVBoxLayout(left_pane)
-        l_layout.setContentsMargins(8, 8, 8, 8)
-        l_layout.setSpacing(8)
+        l_layout.setContentsMargins(10, 10, 10, 10)
+        l_layout.setSpacing(10)
 
         # Search & Group filter
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("🔍 بحث في الاختصارات...")
-        self.search_edit.setFixedHeight(34)
+        self.search_edit.setFixedHeight(42)
         self.search_edit.textChanged.connect(self.refresh_list)
         l_layout.addWidget(self.search_edit)
 
         self.group_filter = QComboBox()
-        self.group_filter.setFixedHeight(34)
+        self.group_filter.setFixedHeight(42)
         self.group_filter.currentTextChanged.connect(self.refresh_list)
         l_layout.addWidget(self.group_filter)
 
-        new_btn = QPushButton("➕ اختصار جديد")
-        new_btn.setFixedHeight(36)
+        new_btn = QPushButton("➕ إضافة اختصار جديد")
+        new_btn.setFixedHeight(44)
         new_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        new_btn.setStyleSheet("background-color: #16a34a; color: white; font-weight: bold; border-radius: 8px;")
+        new_btn.setStyleSheet("background-color: #16a34a; color: white; font-weight: bold; border-radius: 10px; font-size: 14px;")
         new_btn.clicked.connect(self.new_snippet)
         l_layout.addWidget(new_btn)
 
@@ -67,23 +67,25 @@ class SnippetEditorViewQt(QWidget):
         self.snippet_list.setStyleSheet("""
             QListWidget {
                 background-color: #0b141a;
-                border: 1px solid #1f2c34;
-                border-radius: 8px;
-                padding: 4px;
+                border: 2px solid #202c33;
+                border-radius: 10px;
+                padding: 6px;
             }
             QListWidget::item {
-                padding: 8px 12px;
-                border-radius: 6px;
-                color: #e9edef;
-                margin-bottom: 2px;
+                padding: 10px 14px;
+                border-radius: 8px;
+                color: #f0f2f5;
+                margin-bottom: 4px;
+                border: 1px solid #182229;
             }
             QListWidget::item:hover {
                 background-color: #1f2c34;
             }
             QListWidget::item:selected {
                 background-color: #172554;
-                color: #60a5fa;
+                color: #93c5fd;
                 font-weight: bold;
+                border: 1.5px solid #3b82f6;
             }
         """)
         self.snippet_list.itemClicked.connect(self._on_item_clicked)
@@ -92,52 +94,69 @@ class SnippetEditorViewQt(QWidget):
 
         # ── Right Form Pane ──
         right_pane = QFrame()
-        right_pane.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 12px;")
+        right_pane.setStyleSheet("background-color: #111b21; border-radius: 14px; padding: 14px; border: 1.5px solid #2a3942;")
         r_layout = QVBoxLayout(right_pane)
-        r_layout.setContentsMargins(15, 12, 15, 12)
-        r_layout.setSpacing(10)
+        r_layout.setContentsMargins(18, 14, 18, 14)
+        r_layout.setSpacing(12)
 
         # Shortcut & Group row
         row1 = QHBoxLayout()
         self.shortcut_edit = QLineEdit()
-        self.shortcut_edit.setPlaceholderText("نص الاختصار (مثال: :mail)")
-        self.shortcut_edit.setFixedHeight(36)
+        self.shortcut_edit.setPlaceholderText("نص الاختصار (مثال: :mail أو #hi)")
+        self.shortcut_edit.setFixedHeight(44)
         row1.addWidget(self.shortcut_edit)
 
         self.group_combo = QComboBox()
-        self.group_combo.setFixedHeight(36)
+        self.group_combo.setFixedHeight(44)
         row1.addWidget(self.group_combo)
         r_layout.addLayout(row1)
 
         # Description
         self.desc_edit = QLineEdit()
-        self.desc_edit.setPlaceholderText("الوصف (اختياري)")
-        self.desc_edit.setFixedHeight(36)
+        self.desc_edit.setPlaceholderText("الوصف التوضيحي (اختياري)")
+        self.desc_edit.setFixedHeight(44)
         r_layout.addWidget(self.desc_edit)
 
         # Content Text
-        r_layout.addWidget(QLabel("نص التوسيع الكامل:"))
+        lbl_content = QLabel("نص التوسيع الكامل:")
+        lbl_content.setStyleSheet("font-weight: bold; font-size: 14px; color: #94a3b8;")
+        r_layout.addWidget(lbl_content)
+
         self.content_edit = QPlainTextEdit()
-        self.content_edit.setStyleSheet("background-color: #0b141a; color: #e9edef; font-size: 14px; border-radius: 8px; padding: 10px;")
+        self.content_edit.setPlaceholderText("اكتب النص الذي ترغب في توسيعه عند كتابة الاختصار...")
+        self.content_edit.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #0b141a;
+                color: #f0f2f5;
+                font-size: 15px;
+                border-radius: 10px;
+                padding: 12px;
+                border: 2px solid #3b4a54;
+            }
+            QPlainTextEdit:focus {
+                border: 2px solid #25D366;
+            }
+        """)
         r_layout.addWidget(self.content_edit, stretch=1)
 
         # Bottom Options
         bot_row = QHBoxLayout()
         self.case_check = QCheckBox("حساس لحالة الأحرف (Case Sensitive)")
         self.case_check.setChecked(True)
+        self.case_check.setStyleSheet("font-size: 14px; font-weight: bold; color: #94a3b8;")
         bot_row.addWidget(self.case_check)
 
         bot_row.addStretch()
 
         self.del_btn = QPushButton("🗑️ حذف")
-        self.del_btn.setFixedHeight(36)
-        self.del_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 8px; padding: 4px 14px;")
+        self.del_btn.setFixedHeight(44)
+        self.del_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 10px; padding: 4px 18px; font-size: 14px;")
         self.del_btn.clicked.connect(self._delete_current)
         bot_row.addWidget(self.del_btn)
 
         save_btn = QPushButton("💾 حفظ الاختصار")
-        save_btn.setFixedHeight(36)
-        save_btn.setStyleSheet("background-color: #25D366; color: white; font-weight: bold; border-radius: 8px; padding: 4px 18px;")
+        save_btn.setFixedHeight(44)
+        save_btn.setStyleSheet("background-color: #25D366; color: white; font-weight: bold; border-radius: 10px; padding: 4px 24px; font-size: 15px;")
         save_btn.clicked.connect(self._save_current)
         bot_row.addWidget(save_btn)
 

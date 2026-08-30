@@ -18,15 +18,15 @@ class SearchPageQt(QWidget):
     def _setup_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(25, 20, 25, 20)
-        layout.setSpacing(12)
+        layout.setSpacing(14)
 
-        title = QLabel("البحث الموحد (Unified Search)")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #e9edef;")
+        title = QLabel("البحث الموحد الشامل (Unified Global Search)")
+        title.setStyleSheet("font-size: 24px; font-weight: bold; color: #f0f2f5;")
         layout.addWidget(title)
 
         self.search_edit = QLineEdit()
-        self.search_edit.setPlaceholderText("ابحث عبر الاختصارات، الملاحظات، والشات، والحافظة...")
-        self.search_edit.setFixedHeight(40)
+        self.search_edit.setPlaceholderText("🔍 ابحث فوراً عبر الاختصارات، الملاحظات، الشات، والحافظة...")
+        self.search_edit.setFixedHeight(48)
         self.search_edit.textChanged.connect(self._run_search)
         layout.addWidget(self.search_edit)
 
@@ -34,19 +34,28 @@ class SearchPageQt(QWidget):
         self.results_list.setStyleSheet("""
             QListWidget {
                 background-color: #111b21;
-                border: 1px solid #1f2c34;
-                border-radius: 10px;
-                padding: 6px;
+                border: 2px solid #202c33;
+                border-radius: 12px;
+                padding: 8px;
             }
             QListWidget::item {
-                background-color: #1f2c34;
-                color: #e9edef;
-                padding: 12px 14px;
-                border-radius: 8px;
-                margin-bottom: 4px;
+                background-color: #182229;
+                color: #f0f2f5;
+                padding: 14px 18px;
+                border-radius: 10px;
+                margin-bottom: 6px;
+                border: 1px solid #2a3942;
+                font-size: 15px;
             }
             QListWidget::item:hover {
-                background-color: #2a3942;
+                background-color: #202c33;
+                border-color: #3b4a54;
+            }
+            QListWidget::item:selected {
+                background-color: #172554;
+                color: #93c5fd;
+                font-weight: bold;
+                border: 1.5px solid #3b82f6;
             }
         """)
         self.results_list.itemDoubleClicked.connect(self._copy_result)

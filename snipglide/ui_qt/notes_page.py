@@ -36,26 +36,26 @@ class NotesPageQt(QWidget):
 
         # ── Left List Pane ──
         left_pane = QFrame()
-        left_pane.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 8px;")
+        left_pane.setStyleSheet("background-color: #111b21; border-radius: 14px; padding: 10px; border: 1.5px solid #2a3942;")
         l_layout = QVBoxLayout(left_pane)
-        l_layout.setContentsMargins(8, 8, 8, 8)
-        l_layout.setSpacing(8)
+        l_layout.setContentsMargins(10, 10, 10, 10)
+        l_layout.setSpacing(10)
 
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("🔍 بحث في الملاحظات...")
-        self.search_edit.setFixedHeight(34)
+        self.search_edit.setFixedHeight(42)
         self.search_edit.textChanged.connect(self.refresh_list)
         l_layout.addWidget(self.search_edit)
 
         self.cat_filter = QComboBox()
-        self.cat_filter.setFixedHeight(34)
+        self.cat_filter.setFixedHeight(42)
         self.cat_filter.currentTextChanged.connect(self.refresh_list)
         l_layout.addWidget(self.cat_filter)
 
-        new_btn = QPushButton("➕ ملاحظة جديدة")
-        new_btn.setFixedHeight(36)
+        new_btn = QPushButton("➕ إضافة ملاحظة جديدة")
+        new_btn.setFixedHeight(44)
         new_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        new_btn.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; border-radius: 8px;")
+        new_btn.setStyleSheet("background-color: #f59e0b; color: white; font-weight: bold; border-radius: 10px; font-size: 14px;")
         new_btn.clicked.connect(self.new_note)
         l_layout.addWidget(new_btn)
 
@@ -63,23 +63,25 @@ class NotesPageQt(QWidget):
         self.notes_list.setStyleSheet("""
             QListWidget {
                 background-color: #0b141a;
-                border: 1px solid #1f2c34;
-                border-radius: 8px;
-                padding: 4px;
+                border: 2px solid #202c33;
+                border-radius: 10px;
+                padding: 6px;
             }
             QListWidget::item {
-                padding: 10px 12px;
-                border-radius: 6px;
-                color: #e9edef;
-                margin-bottom: 2px;
+                padding: 12px 14px;
+                border-radius: 8px;
+                color: #f0f2f5;
+                margin-bottom: 4px;
+                border: 1px solid #182229;
             }
             QListWidget::item:hover {
                 background-color: #1f2c34;
             }
             QListWidget::item:selected {
                 background-color: #172554;
-                color: #60a5fa;
+                color: #93c5fd;
                 font-weight: bold;
+                border: 1.5px solid #3b82f6;
             }
         """)
         self.notes_list.itemClicked.connect(self._on_item_clicked)
@@ -88,33 +90,46 @@ class NotesPageQt(QWidget):
 
         # ── Right Editor Pane ──
         right_pane = QFrame()
-        right_pane.setStyleSheet("background-color: #111b21; border-radius: 12px; padding: 12px;")
+        right_pane.setStyleSheet("background-color: #111b21; border-radius: 14px; padding: 14px; border: 1.5px solid #2a3942;")
         r_layout = QVBoxLayout(right_pane)
-        r_layout.setContentsMargins(15, 12, 15, 12)
-        r_layout.setSpacing(10)
+        r_layout.setContentsMargins(18, 14, 18, 14)
+        r_layout.setSpacing(12)
 
         # Title + Category + Pin
         row1 = QHBoxLayout()
         self.title_edit = QLineEdit()
         self.title_edit.setPlaceholderText("عنوان الملاحظة...")
-        self.title_edit.setFixedHeight(36)
+        self.title_edit.setFixedHeight(44)
         row1.addWidget(self.title_edit, stretch=1)
 
         self.cat_combo = QComboBox()
-        self.cat_combo.setFixedHeight(36)
+        self.cat_combo.setFixedHeight(44)
         row1.addWidget(self.cat_combo)
 
         self.pin_btn = QPushButton("📌 تثبيت")
-        self.pin_btn.setFixedHeight(36)
+        self.pin_btn.setFixedHeight(44)
         self.pin_btn.setCheckable(True)
-        self.pin_btn.setStyleSheet("background-color: #1f2c34; color: white; border-radius: 8px; padding: 4px 12px;")
+        self.pin_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 16px; font-weight: bold;")
         self.pin_btn.clicked.connect(self._toggle_pin)
         row1.addWidget(self.pin_btn)
         r_layout.addLayout(row1)
 
         # Content Text
         self.content_edit = QPlainTextEdit()
-        self.content_edit.setStyleSheet("background-color: #0b141a; color: #e9edef; font-size: 15px; border-radius: 8px; padding: 12px;")
+        self.content_edit.setPlaceholderText("اكتب محتوى الملاحظة هنا...")
+        self.content_edit.setStyleSheet("""
+            QPlainTextEdit {
+                background-color: #0b141a;
+                color: #f0f2f5;
+                font-size: 16px;
+                border-radius: 10px;
+                padding: 14px;
+                border: 2px solid #3b4a54;
+            }
+            QPlainTextEdit:focus {
+                border: 2px solid #25D366;
+            }
+        """)
         r_layout.addWidget(self.content_edit, stretch=1)
 
         # Bottom Actions
@@ -122,14 +137,14 @@ class NotesPageQt(QWidget):
         bot_row.addStretch()
 
         self.del_btn = QPushButton("🗑️ حذف")
-        self.del_btn.setFixedHeight(36)
-        self.del_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 8px; padding: 4px 14px;")
+        self.del_btn.setFixedHeight(44)
+        self.del_btn.setStyleSheet("background-color: #dc2626; color: white; font-weight: bold; border-radius: 10px; padding: 4px 18px; font-size: 14px;")
         self.del_btn.clicked.connect(self._delete_current)
         bot_row.addWidget(self.del_btn)
 
         save_btn = QPushButton("💾 حفظ الملاحظة")
-        save_btn.setFixedHeight(36)
-        save_btn.setStyleSheet("background-color: #25D366; color: white; font-weight: bold; border-radius: 8px; padding: 4px 18px;")
+        save_btn.setFixedHeight(44)
+        save_btn.setStyleSheet("background-color: #25D366; color: white; font-weight: bold; border-radius: 10px; padding: 4px 24px; font-size: 15px;")
         save_btn.clicked.connect(self._save_current)
         bot_row.addWidget(save_btn)
 

@@ -15,6 +15,9 @@ from snipglide.ui_qt.clipboard_page import ClipboardPageQt
 from snipglide.ui_qt.search_page import SearchPageQt
 from snipglide.core.config import load_settings, save_settings, APP_NAME, get_arabic_font_family
 
+import os
+from pathlib import Path
+
 class MainWindowQt(QMainWindow):
     def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None):
         super().__init__()
@@ -23,10 +26,15 @@ class MainWindowQt(QMainWindow):
         self.settings = load_settings()
         self.font_family = font_family or get_arabic_font_family()
 
-        self.setWindowTitle(APP_NAME)
-        # Enlarge main frame for comfortable viewing
-        self.resize(1380, 840)
-        self.setMinimumSize(1150, 720)
+        self.setWindowTitle(f"{APP_NAME} - Professional Edition")
+        # Enlarge main frame for ultra-comfortable viewing
+        self.resize(1440, 900)
+        self.setMinimumSize(1200, 750)
+
+        # Set Window Favicon Icon
+        icon_path = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+        if icon_path.exists():
+            self.setWindowIcon(QIcon(str(icon_path)))
 
         # Apply Global QSS with Google Arabic font and enlarged base size
         self.setStyleSheet(get_stylesheet(font_family=self.font_family, base_font_size=15, is_dark=True))
