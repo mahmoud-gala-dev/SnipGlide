@@ -244,7 +244,7 @@ class ChatNotesPage(ctk.CTkFrame):
 
         is_starred = self.star_new_var.get()
         try:
-            add_chat_note(content=content, is_starred=is_starred)
+            new_note = add_chat_note(content=content, is_starred=is_starred)
             self.message_input.delete("1.0", "end")
 
             # Reset star button for next note
@@ -252,10 +252,21 @@ class ChatNotesPage(ctk.CTkFrame):
                 self.star_new_var.set(False)
                 self.star_new_btn.configure(fg_color=("gray80", "#1f2c34"), text_color=("black", "white"))
 
-            self.refresh_chat(scroll_to_bottom=True)
+            # If there's an active search filter or empty state, full refresh
+            query = self.search_entry.get().strip()
+            if query or not self._notes_cache:
+                self.refresh_chat(scroll_to_bottom=True)
+            else:
+                self._notes_cache.append(new_note)
+                self._render_chat_bubble(new_note)
+                total_count = get_chat_notes_count()
+                self.count_badge.configure(text=f"إجمالي الملاحظات: {total_count} • المعروض حالياً: {len(self._notes_cache)}")
+                self.after(30, self._scroll_to_end)
+
             self.toast_callback("تم حفظ الملاحظة بنجاح 💬")
         except Exception as e:
             self.toast_callback(f"فشل الحفظ: {e}", error=True)
+
 
     def _on_search_key(self, _event=None):
         if self._search_job:

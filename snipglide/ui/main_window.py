@@ -104,73 +104,93 @@ class MainWindow(ctk.CTk):
         return None
 
     def _create_pages(self):
-        from snipglide.ui.dashboard import Dashboard
-        from snipglide.ui.snippet_editor_view import SnippetEditorView
-        from snipglide.ui.notes_page import NotesPage
-        from snipglide.ui.chat_notes_page import ChatNotesPage
-        from snipglide.ui.search_page import SearchPage
-        from snipglide.ui.settings_page import SettingsPage
-        from snipglide.ui.health_page import HealthPage
-        from snipglide.ui.marketplace import Marketplace
-        from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
-        from snipglide.ui.ai_assistant_page import AIAssistantPage
+        self.pages = {}
+        # Pre-instantiate only Dashboard for immediate startup
+        self._get_or_create_page("Dashboard")
 
-        self.pages = {
-            "Dashboard": Dashboard(self.content_frame),
-            "Snippets": SnippetEditorView(
+    def _get_or_create_page(self, page_id: str):
+        if page_id in self.pages and self.pages[page_id] is not None:
+            return self.pages[page_id]
+
+        if page_id == "Dashboard":
+            from snipglide.ui.dashboard import Dashboard
+            page = Dashboard(self.content_frame)
+        elif page_id == "Snippets":
+            from snipglide.ui.snippet_editor_view import SnippetEditorView
+            page = SnippetEditorView(
                 self.content_frame,
                 toast_callback=self.toast,
                 settings_provider=self.get_settings,
                 snippets_changed_callback=self._notify_snippets_changed,
-            ),
-            "Notes": NotesPage(self.content_frame, toast_callback=self.toast),
-            "ChatNotes": ChatNotesPage(
+            )
+        elif page_id == "Notes":
+            from snipglide.ui.notes_page import NotesPage
+            page = NotesPage(self.content_frame, toast_callback=self.toast)
+        elif page_id == "ChatNotes":
+            from snipglide.ui.chat_notes_page import ChatNotesPage
+            page = ChatNotesPage(
                 self.content_frame,
                 toast_callback=self.toast,
                 navigate_to_snippet_callback=self._navigate_to_snippet,
-            ),
-            "Search": SearchPage(
+            )
+        elif page_id == "Search":
+            from snipglide.ui.search_page import SearchPage
+            page = SearchPage(
                 self.content_frame,
                 toast_callback=self.toast,
                 navigate_to_snippet_callback=self._navigate_to_snippet,
-            ),
-            "Settings": SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings),
-            "Health": HealthPage(
+            )
+        elif page_id == "Settings":
+            from snipglide.ui.settings_page import SettingsPage
+            page = SettingsPage(self.content_frame, settings_dict=self.settings, save_callback=self._save_settings)
+        elif page_id == "Health":
+            from snipglide.ui.health_page import HealthPage
+            page = HealthPage(
                 self.content_frame,
                 toast_callback=self.toast,
                 settings_provider=self.get_settings,
                 save_settings_callback=self._save_settings,
-            ),
-            "Marketplace": Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views),
-            "Clipboard": ClipboardHistoryPage(
+            )
+        elif page_id == "Marketplace":
+            from snipglide.ui.marketplace import Marketplace
+            page = Marketplace(self.content_frame, toast_callback=self.toast, refresh_callback=self._refresh_all_views)
+        elif page_id == "Clipboard":
+            from snipglide.ui.clipboard_history_page import ClipboardHistoryPage
+            page = ClipboardHistoryPage(
                 self.content_frame,
                 toast_callback=self.toast,
                 navigate_to_snippet_callback=self._navigate_to_snippet,
-            ),
-            "AIAssistant": AIAssistantPage(
+            )
+        elif page_id == "AIAssistant":
+            from snipglide.ui.ai_assistant_page import AIAssistantPage
+            page = AIAssistantPage(
                 self.content_frame,
                 toast_callback=self.toast,
                 settings_provider=self.get_settings,
                 refresh_callback=self._refresh_all_views,
-            ),
-        }
-        
+            )
+        else:
+            return None
+
+        self.pages[page_id] = page
+        return page
+
     def switch_page(self, page_id: str):
-        if self.active_page is self.pages.get(page_id):
+        page = self._get_or_create_page(page_id)
+        if not page or self.active_page is page:
             return
 
         if self.active_page:
             self.active_page.grid_forget()
-            
-        page = self.pages[page_id]
+
         page.grid(row=0, column=0, sticky="nsew")
         self.active_page = page
-        
-        if page_id == "Dashboard":
+
+        if page_id == "Dashboard" and hasattr(page, "refresh_stats"):
             page.refresh_stats()
-        elif page_id == "Clipboard":
+        elif page_id == "Clipboard" and hasattr(page, "refresh_history"):
             page.refresh_history()
-        elif page_id == "ChatNotes":
+        elif page_id == "ChatNotes" and hasattr(page, "refresh_chat"):
             page.refresh_chat(scroll_to_bottom=True)
             
     def toast(self, message: str, error: bool = False):
@@ -188,11 +208,10 @@ class MainWindow(ctk.CTk):
             pady=8,
         )
         label.pack()
-        self.update_idletasks()
-        x = self.winfo_x() + self.winfo_width() - 320
+        x = self.winfo_x() + max(100, self.winfo_width() - 320)
         y = self.winfo_y() + 45
         popup.geometry(f"+{x}+{y}")
-        popup.after(1800, popup.destroy)
+        popup.after(1600, popup.destroy)
         
     def _save_settings(self):
         save_settings(self.settings)
@@ -216,12 +235,14 @@ class MainWindow(ctk.CTk):
     def _notify_snippets_changed(self):
         if self.snippets_changed_callback:
             self.snippets_changed_callback()
-        
+
     def _trigger_new_snippet(self):
         self.switch_page("Snippets")
         self.sidebar.select_page("Snippets")
-        self.pages["Snippets"]._new_snippet()
-        
+        snippets_page = self._get_or_create_page("Snippets")
+        if snippets_page:
+            snippets_page._new_snippet()
+
     def _import_xlsx(self):
         file_path = filedialog.askopenfilename(title="Import Excel file", filetypes=[("Excel files", "*.xlsx")])
         if file_path:
@@ -233,7 +254,8 @@ class MainWindow(ctk.CTk):
                 self.toast(f"Imported {count} snippets.")
             except Exception as e:
                 self.toast(str(e), error=True)
-                
+
+
     def _export_xlsx(self):
         file_path = filedialog.asksaveasfilename(title="Export Excel file", defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if file_path:
@@ -312,8 +334,11 @@ class MainWindow(ctk.CTk):
     def _navigate_to_snippet(self, text: str):
         self.switch_page("Snippets")
         self.sidebar.select_page("Snippets")
-        self.pages["Snippets"]._new_snippet()
-        self.pages["Snippets"].editor.set_text(text)
+        snippets_page = self._get_or_create_page("Snippets")
+        if snippets_page:
+            snippets_page._new_snippet()
+            snippets_page.editor.set_text(text)
+
 
     def _run_in_background(self):
         """Minimize the window to system tray (run in background mode)."""

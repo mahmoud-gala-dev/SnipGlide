@@ -1,5 +1,8 @@
 import sys
+import re
+import tkinter as tk
 from pathlib import Path
+
 
 def resource_path(relative: str) -> Path:
     if hasattr(sys, "_MEIPASS"):
@@ -106,12 +109,13 @@ def create_context_menu(widget, has_ai=False, ai_callback=None):
             
     target.bind("<Button-3>", show_menu)
 
+ARABIC_RE = re.compile(r"[\u0600-\u06FF]")
+
 def apply_rtl_support(widget):
-    import re
-    import tkinter as tk
     target = getattr(widget, "_textbox", getattr(widget, "_entry", widget))
     rtl_job = None
     last_text = None
+    current_state = None  # (is_arabic, font_family, align)
     
     from snipglide.core.config import get_arabic_font_family
     
@@ -119,52 +123,51 @@ def apply_rtl_support(widget):
         target.tag_configure("rtl_align", justify="right")
         target.tag_configure("ltr_align", justify="left")
     
-    def on_key_release(event=None):
-        nonlocal last_text
+    def on_check():
+        nonlocal last_text, current_state
         try:
             if isinstance(target, tk.Entry):
                 text = target.get()
-                has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
+                if text == last_text:
+                    return
+                last_text = text
+                has_arabic = bool(ARABIC_RE.search(text))
                 align = "right" if has_arabic else "left"
-                current_family = get_arabic_font_family()
-                if has_arabic:
-                    target.configure(justify=align, font=(current_family, 13))
-                else:
-                    target.configure(justify=align, font=("Segoe UI", 13))
+                family = get_arabic_font_family() if has_arabic else "Segoe UI"
+                new_state = (has_arabic, family, align)
+                if new_state != current_state:
+                    current_state = new_state
+                    target.configure(justify=align, font=(family, 13))
             elif isinstance(target, tk.Text):
                 text = target.get("1.0", "end-1c")
                 if text == last_text:
                     return
                 last_text = text
-                has_arabic = bool(re.search(r"[\u0600-\u06FF]", text))
-                current_family = get_arabic_font_family()
-                if has_arabic:
-                    target.configure(font=(current_family, 13))
-                    target.tag_remove("ltr_align", "1.0", "end")
-                    target.tag_add("rtl_align", "1.0", "end")
-                else:
-                    target.configure(font=("Consolas", 13))
-                    target.tag_remove("rtl_align", "1.0", "end")
-                    target.tag_add("ltr_align", "1.0", "end")
-        except Exception as e:
+                has_arabic = bool(ARABIC_RE.search(text))
+                family = get_arabic_font_family() if has_arabic else "Consolas"
+                new_state = (has_arabic, family)
+                if new_state != current_state:
+                    current_state = new_state
+                    target.configure(font=(family, 13))
+                    if has_arabic:
+                        target.tag_remove("ltr_align", "1.0", "end")
+                        target.tag_add("rtl_align", "1.0", "end")
+                    else:
+                        target.tag_remove("rtl_align", "1.0", "end")
+                        target.tag_add("ltr_align", "1.0", "end")
+        except Exception:
             pass
-
-    def run_scheduled_text_check():
-        nonlocal rtl_job
-        rtl_job = None
-        on_key_release()
 
     def schedule_text_check(event=None):
         nonlocal rtl_job
-        if isinstance(target, tk.Text):
-            if rtl_job:
-                target.after_cancel(rtl_job)
-            rtl_job = target.after(220, run_scheduled_text_check)
-        else:
-            on_key_release(event)
+        if rtl_job:
+            target.after_cancel(rtl_job)
+        # 180ms debounce avoids re-evaluating on every micro keystroke
+        rtl_job = target.after(180, on_check)
 
     target.bind("<KeyRelease>", schedule_text_check, add="+")
-    on_key_release(None)
+    target.after(50, on_check)
+
 
 def download_and_load_arabic_font() -> str:
     import urllib.request

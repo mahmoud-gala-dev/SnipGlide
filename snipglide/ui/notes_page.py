@@ -440,11 +440,9 @@ class NotesPage(ctk.CTkFrame):
             text="Unpin" if note.pinned else "Pin",
             fg_color="#f59e0b" if note.pinned else ("gray75", "gray25"),
         )
-        if note.content.strip():
-            self._copy_text_to_clipboard(note.content)
-            self.toast_callback("Note copied to clipboard.")
         self._last_saved_state = (self.selected_note_id, note.title, note.content, self.category_var.get())
         self.save_state_label.configure(text="Saved", text_color="gray")
+
 
     def _new_note(self):
         if self._autosave_job:

@@ -94,7 +94,7 @@ class CodeEditor(ctk.CTkFrame):
                 return text
 
         def apply_rtl_per_line():
-            """Apply RTL or LTR justify tag to every line based on content."""
+            """Apply RTL or LTR justify tag to lines efficiently in memory."""
             try:
                 current_text = self.textbox.get("1.0", "end-1c")
                 if current_text == self._last_rtl_text:
@@ -103,22 +103,32 @@ class CodeEditor(ctk.CTkFrame):
                 self._last_rtl_text = current_text
                 self.textbox.tag_remove("rtl", "1.0", "end")
                 self.textbox.tag_remove("ltr", "1.0", "end")
-                total_lines = int(self.textbox.index("end-1c").split(".")[0])
-                if total_lines > 1000:
-                    any_arabic = bool(re.search(r"[\u0600-\u06FF]", current_text))
-                    tag = "rtl" if any_arabic else "ltr"
-                    self.textbox.tag_add(tag, "1.0", "end")
-                    return any_arabic
 
-                any_arabic = False
-                for lineno in range(1, total_lines + 1):
-                    line_text = self.textbox.get(f"{lineno}.0", f"{lineno}.end")
-                    if re.search(r"[\u0600-\u06FF]", line_text):
+                lines = current_text.split("\n")
+                if not lines:
+                    return False
+
+                has_any_arabic = False
+                arabic_lines = []
+                for idx, line in enumerate(lines, start=1):
+                    if re.search(r"[\u0600-\u06FF]", line):
+                        arabic_lines.append(idx)
+                        has_any_arabic = True
+
+                if not has_any_arabic:
+                    self.textbox.tag_add("ltr", "1.0", "end")
+                elif len(arabic_lines) == len(lines):
+                    self.textbox.tag_add("rtl", "1.0", "end")
+                else:
+                    # Mixed text: tag specific lines
+                    for lineno in arabic_lines:
                         self.textbox.tag_add("rtl", f"{lineno}.0", f"{lineno}.end+1c")
-                        any_arabic = True
-                    else:
-                        self.textbox.tag_add("ltr", f"{lineno}.0", f"{lineno}.end+1c")
-                return any_arabic
+                    # Remaining lines default to ltr
+                    for lineno in range(1, len(lines) + 1):
+                        if lineno not in arabic_lines:
+                            self.textbox.tag_add("ltr", f"{lineno}.0", f"{lineno}.end+1c")
+
+                return has_any_arabic
             except Exception:
                 return False
 
@@ -140,13 +150,14 @@ class CodeEditor(ctk.CTkFrame):
         def schedule_rtl_check(event=None):
             if self._rtl_job:
                 self.after_cancel(self._rtl_job)
-            self._rtl_job = self.after(220, on_key)
+            self._rtl_job = self.after(250, on_key)
 
         self.textbox.bind("<KeyRelease>", schedule_rtl_check, add="+")
         # Also apply on paste
-        self.textbox.bind("<<Paste>>", lambda e: self.after(80, on_key), add="+")
+        self.textbox.bind("<<Paste>>", lambda e: self.after(100, on_key), add="+")
         # Run once to set initial state
         self.after(300, on_key)
+
 
     # ── Toolbar callbacks ─────────────────────────────────────
     def _on_font_size_change(self, value):
