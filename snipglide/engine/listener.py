@@ -60,10 +60,18 @@ class ExpansionEngine:
             self.listener = None
         logger.info("Expansion engine stopped.")
 
+    def reload_snippets(self):
+        """Invalidate cache immediately so new/updated snippets take effect instantly."""
+        with self._lock:
+            self._last_snippets_fetch = 0
+            self._cached_snippets = []
+            self.buffer = ""
+        logger.info("Snippets reloaded in expansion engine.")
+
     def set_suspended(self, value: bool):
         self.suspended = value
         self.buffer = ""
-        
+
     def _is_idle_mode(self) -> bool:
         """Check if we're in idle mode (reduced processing)."""
         return (time.time() - self._last_key_time) > self._idle_threshold

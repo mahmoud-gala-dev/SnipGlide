@@ -3,7 +3,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QPlainTextEdit, QScrollArea, QFrame, QComboBox, QCheckBox, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter
+    QListWidget, QListWidgetItem, QSplitter, QMenu, QApplication
 )
 
 from snipglide.database.snippet_repo import (
@@ -132,10 +132,37 @@ class SnippetEditorViewQt(QWidget):
         row2.addWidget(self.app_combo, stretch=1)
         r_layout.addLayout(row2)
 
-        # Content Text
+        # Content Text & Variable Insert Toolbar
+        var_header_row = QHBoxLayout()
         lbl_content = QLabel("نص التوسيع الكامل:")
         lbl_content.setStyleSheet("font-weight: bold; font-size: 14px; color: #94a3b8;")
-        r_layout.addWidget(lbl_content)
+        var_header_row.addWidget(lbl_content)
+        var_header_row.addStretch()
+
+        # Variable Quick Pills
+        for v_tag in ["{date}", "{time}", "{clipboard}", "{uuid}", "{random}"]:
+            btn_v = QPushButton(f"+ {v_tag}")
+            btn_v.setFixedHeight(28)
+            btn_v.setCursor(QCursor(Qt.PointingHandCursor))
+            btn_v.setStyleSheet("""
+                QPushButton {
+                    background-color: #202c33;
+                    border: 1px solid #3b4a54;
+                    color: #38bdf8;
+                    font-weight: bold;
+                    font-size: 11px;
+                    border-radius: 6px;
+                    padding: 2px 8px;
+                }
+                QPushButton:hover {
+                    background-color: #2a3942;
+                    border-color: #38bdf8;
+                }
+            """)
+            btn_v.clicked.connect(lambda _, tag=v_tag: self._insert_variable(tag))
+            var_header_row.addWidget(btn_v)
+
+        r_layout.addLayout(var_header_row)
 
         self.content_edit = QPlainTextEdit()
         self.content_edit.setPlaceholderText("اكتب النص الذي ترغب في توسيعه عند كتابة الاختصار...")
@@ -152,7 +179,22 @@ class SnippetEditorViewQt(QWidget):
                 border: 2px solid #25D366;
             }
         """)
+        self.content_edit.textChanged.connect(self._update_live_preview)
         r_layout.addWidget(self.content_edit, stretch=1)
+
+        # Real-time Live Expansion Preview Box
+        prev_frame = QFrame()
+        prev_frame.setStyleSheet("background-color: #0b141a; border: 1.5px dashed #202c33; border-radius: 10px; padding: 6px 12px;")
+        pv_layout = QHBoxLayout(prev_frame)
+        pv_layout.setContentsMargins(8, 4, 8, 4)
+        pv_tag = QLabel("معاينة حية للتوسيع ⚡:")
+        pv_tag.setStyleSheet("color: #64748b; font-size: 12px; font-weight: bold; border: none;")
+        pv_layout.addWidget(pv_tag)
+
+        self.live_prev_lbl = QLabel("")
+        self.live_prev_lbl.setStyleSheet("color: #25D366; font-size: 13px; font-weight: bold; border: none;")
+        pv_layout.addWidget(self.live_prev_lbl, stretch=1)
+        r_layout.addWidget(prev_frame)
 
         # Bottom Options
         bot_row = QHBoxLayout()
@@ -225,12 +267,30 @@ class SnippetEditorViewQt(QWidget):
             else:
                 self.app_combo.setCurrentIndex(0)
 
+    def _insert_variable(self, tag: str):
+        self.content_edit.insertPlainText(tag)
+        self.content_edit.setFocus()
+        self._update_live_preview()
+
+    def _update_live_preview(self):
+        text = self.content_edit.toPlainText()
+        if not text:
+            self.live_prev_lbl.setText("(اكتب نصاً لمعاينة التوسيع المباشر)")
+            return
+        from snipglide.engine.parser import parse_variables
+        rendered = parse_variables(text)
+        preview_clean = rendered.replace("\n", " ⏎ ")
+        if len(preview_clean) > 80:
+            preview_clean = preview_clean[:80] + "..."
+        self.live_prev_lbl.setText(f"» {preview_clean}")
+
     def new_snippet(self, initial_content: str = ""):
         self.selected_snippet_id = None
         self.shortcut_edit.clear()
         self.desc_edit.clear()
         self.content_edit.setPlainText(initial_content)
         self.app_combo.setCurrentIndex(0)
+        self._update_live_preview()
         self.shortcut_edit.setFocus()
 
     def _save_current(self):

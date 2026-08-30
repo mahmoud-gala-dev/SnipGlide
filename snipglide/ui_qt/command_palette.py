@@ -135,6 +135,7 @@ class CommandPaletteQt(QDialog):
             ("nav", "Clipboard", "📋 الانتقال إلى: سجل الحافظة (Clipboard)"),
             ("action", "new_snippet", "➕ إنشاء اختصار جديد"),
             ("action", "new_note", "📝 كتابة ملاحظة جديدة"),
+            ("action", "web_dev", "🛠️ فتح مستودع أكواد وأدوات مبرمج الويب (Web Dev Toolbox)"),
             ("action", "email_templates", "📧 فتح قوالب البريد الإلكتروني الذكية"),
             ("action", "toggle_chat_head", "💬 إظهار / إخفاء فقاعة شات نوت العائمة على الشاشة"),
             ("action", "export_data", "💾 تصدير كافة البيانات إلى ملف JSON"),

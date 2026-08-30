@@ -16,8 +16,9 @@ from snipglide.database.chat_note_repo import (
 )
 from snipglide.database.note_settings_repo import get_note_setting, set_note_setting
 from snipglide.models.chat_note import ChatNote, ChatNoteSection
-from snipglide.utils.helpers import download_and_load_arabic_font
 from snipglide.core.config import get_arabic_font_family, set_arabic_font_family
+from snipglide.ui_qt.voice_player_widget import VoiceNotePlayerWidget
+from snipglide.services.audio_service import global_recorder
 
 
 class ChatNotesPageQt(QWidget):
@@ -161,6 +162,34 @@ class ChatNotesPageQt(QWidget):
         demo_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; color: white; border-radius: 10px; padding: 4px 12px; font-weight: bold;")
         demo_btn.clicked.connect(self._seed_demo_data)
         h_layout.addWidget(demo_btn)
+
+        # Scroll to Top / Bottom Buttons
+        scroll_btn_box = QFrame()
+        scroll_btn_box.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px;")
+        sb_layout = QHBoxLayout(scroll_btn_box)
+        sb_layout.setContentsMargins(4, 2, 4, 2)
+        sb_layout.setSpacing(4)
+
+        top_btn = QPushButton("🔼 للأعلى")
+        top_btn.setFixedHeight(34)
+        top_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        top_btn.setToolTip("الانتقال إلى بداية الرسائل الأولى")
+        top_btn.setStyleSheet("background: transparent; color: #f0f2f5; font-weight: bold; font-size: 12px; border: none; padding: 2px 8px;")
+        top_btn.clicked.connect(self._scroll_to_top)
+        sb_layout.addWidget(top_btn)
+
+        sep = QLabel("|")
+        sep.setStyleSheet("color: #3b4a54; border: none;")
+        sb_layout.addWidget(sep)
+
+        bot_btn = QPushButton("🔽 للأسفل")
+        bot_btn.setFixedHeight(34)
+        bot_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        bot_btn.setToolTip("الانتقال إلى أحدث الرسائل بالأسفل")
+        bot_btn.setStyleSheet("background: transparent; color: #25D366; font-weight: bold; font-size: 12px; border: none; padding: 2px 8px;")
+        bot_btn.clicked.connect(self._scroll_to_bottom)
+        sb_layout.addWidget(bot_btn)
+        h_layout.addWidget(scroll_btn_box)
 
         # Clear Button
         clear_btn = QPushButton("🗑️ مسح")
@@ -450,11 +479,15 @@ class ChatNotesPageQt(QWidget):
             self._record_seconds = 0
             self.mic_btn.setText("⏹️")
             self.mic_btn.setStyleSheet("background-color: #dc2626; color: white; border-radius: 10px; font-size: 20px; font-weight: bold;")
-            self.message_input.setPlaceholderText("🔴 جارِ تسجيل الملاحظة الصوتية... (اضغط ⏹️ للحفظ والإرسال)")
+            self.message_input.setPlaceholderText("🔴 جارِ تسجيل صوتك الحقيقي من المايكروفون... (اضغط ⏹️ للحفظ والإرسال)")
+            
+            # Start real microphone audio recording
+            global_recorder.start()
+
             self._record_timer = QTimer(self)
             self._record_timer.timeout.connect(self._update_record_ticker)
             self._record_timer.start(1000)
-            self.toast_signal.emit("بدأ تسجيل الملاحظة الصوتية 🎙️", False)
+            self.toast_signal.emit("بدأ تسجيل صوتك من المايكروفون 🎙️", False)
         else:
             self._stop_and_save_voice_record()
 
@@ -462,7 +495,7 @@ class ChatNotesPageQt(QWidget):
         self._record_seconds += 1
         mins = self._record_seconds // 60
         secs = self._record_seconds % 60
-        self.message_input.setPlaceholderText(f"🔴 تسجيل صوتي ({mins:02d}:{secs:02d}) • اضغط ⏹️ للإرسال...")
+        self.message_input.setPlaceholderText(f"🔴 تسجيل صوتي حي ({mins:02d}:{secs:02d}) • اضغط ⏹️ للحفظ والإرسال...")
 
     def _stop_and_save_voice_record(self):
         self._is_recording = False
@@ -474,17 +507,26 @@ class ChatNotesPageQt(QWidget):
         self.mic_btn.setStyleSheet("background-color: #202c33; border: 1.5px solid #3b4a54; border-radius: 10px; font-size: 20px; color: white;")
         self.message_input.setPlaceholderText("اكتب ملاحظتك هنا... (Enter للإرسال، Shift+Enter لسطر جديد)")
 
-        dur = max(self._record_seconds, 3)
+        # Stop real microphone recording and get saved WAV file info
+        rec_data = global_recorder.stop()
+
+        dur = max(self._record_seconds, 1)
+        audio_tag = ""
+        if rec_data:
+            dur = max(1, int(round(rec_data.get("duration", dur))))
+            file_path = rec_data.get("file_path", "")
+            audio_tag = f"\n[audio:{file_path}]"
+
         mins = dur // 60
         secs = dur % 60
-        voice_content = f"🎙️ [ملاحظة صوتية - Voice Note ({mins:02d}:{secs:02d})]\n▶️  ▂▃▅▇▅▃▂ ▃▅▇▅  ({dur} ثانية)"
+        voice_content = f"🎙️ [ملاحظة صوتية - Voice Note ({mins:02d}:{secs:02d})]{audio_tag}"
 
         target_sec_id = self.compose_sec_combo.currentData() or 1
         try:
             add_chat_note(content=voice_content, is_starred=False, section_id=target_sec_id)
             self.refresh_sections()
             self.refresh_chat(scroll_to_bottom=True)
-            self.toast_signal.emit("تم حفظ وإرسال الملاحظة الصوتية بنجاح! 🎙️", False)
+            self.toast_signal.emit("تم حفظ الملاحظة الصوتية الحقيقية بنجاح! 🎙️", False)
         except Exception as e:
             self.toast_signal.emit(f"فشل الحفظ: {e}", True)
 
@@ -599,39 +641,45 @@ class ChatNotesPageQt(QWidget):
             top_layout.addStretch()
             b_layout.addLayout(top_layout)
 
-        # Truncation logic (Read more / Read less)
-        is_long = len(note.content) > 220 or note.content.count("\n") >= 4
-        is_expanded = note.id in self._expanded_note_ids
+        is_voice_note = "🎙️ [ملاحظة صوتية" in note.content or "Voice Note" in note.content
 
-        display_text = note.content
-        if is_long and not is_expanded and not search_query:
-            display_text = note.content[:200] + "..."
+        if is_voice_note:
+            voice_player = VoiceNotePlayerWidget(note.content, bubble)
+            b_layout.addWidget(voice_player)
+        else:
+            # Truncation logic (Read more / Read less)
+            is_long = len(note.content) > 220 or note.content.count("\n") >= 4
+            is_expanded = note.id in self._expanded_note_ids
 
-        # Highlight Search Query with vivid highlight
-        formatted_html = self._format_highlighted_text(display_text, search_query)
+            display_text = note.content
+            if is_long and not is_expanded and not search_query:
+                display_text = note.content[:200] + "..."
 
-        content_lbl = QLabel()
-        content_lbl.setTextFormat(Qt.RichText)
-        content_lbl.setText(formatted_html)
-        content_lbl.setWordWrap(True)
-        content_lbl.setCursor(QCursor(Qt.PointingHandCursor))
-        content_lbl.setAlignment(align)
-        content_lbl.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{font_family}'; color: #f0f2f5; line-height: 1.4; border: none; background: transparent;")
-        
-        def _on_lbl_clicked(event, n=note):
-            if event.button() == Qt.LeftButton:
-                self._copy_note(n)
-            QLabel.mousePressEvent(content_lbl, event)
-        content_lbl.mousePressEvent = _on_lbl_clicked
-        b_layout.addWidget(content_lbl)
+            # Highlight Search Query with vivid highlight
+            formatted_html = self._format_highlighted_text(display_text, search_query)
 
-        # "Read more / Read less" Button
-        if is_long and not search_query:
-            more_btn = QPushButton("عرض أقل ▴" if is_expanded else "عرض المزيد ▾")
-            more_btn.setCursor(QCursor(Qt.PointingHandCursor))
-            more_btn.setStyleSheet("color: #6ee7b7; font-size: 13px; font-weight: bold; border: none; background: transparent; text-align: right; padding: 2px;")
-            more_btn.clicked.connect(lambda _, nid=note.id: self._toggle_expand_note(nid))
-            b_layout.addWidget(more_btn)
+            content_lbl = QLabel()
+            content_lbl.setTextFormat(Qt.RichText)
+            content_lbl.setText(formatted_html)
+            content_lbl.setWordWrap(True)
+            content_lbl.setCursor(QCursor(Qt.PointingHandCursor))
+            content_lbl.setAlignment(align)
+            content_lbl.setStyleSheet(f"font-size: {self.chat_font_size}px; font-family: '{font_family}'; color: #f0f2f5; line-height: 1.4; border: none; background: transparent;")
+            
+            def _on_lbl_clicked(event, n=note):
+                if event.button() == Qt.LeftButton:
+                    self._copy_note(n)
+                QLabel.mousePressEvent(content_lbl, event)
+            content_lbl.mousePressEvent = _on_lbl_clicked
+            b_layout.addWidget(content_lbl)
+
+            # "Read more / Read less" Button
+            if is_long and not search_query:
+                more_btn = QPushButton("عرض أقل ▴" if is_expanded else "عرض المزيد ▾")
+                more_btn.setCursor(QCursor(Qt.PointingHandCursor))
+                more_btn.setStyleSheet("color: #6ee7b7; font-size: 13px; font-weight: bold; border: none; background: transparent; text-align: right; padding: 2px;")
+                more_btn.clicked.connect(lambda _, nid=note.id: self._toggle_expand_note(nid))
+                b_layout.addWidget(more_btn)
 
         # Bottom Bar: Actions + Time
         bottom_layout = QHBoxLayout()
@@ -669,7 +717,9 @@ class ChatNotesPageQt(QWidget):
         bottom_layout.addStretch()
 
         time_str = self._format_note_time(note.created_at)
-        time_lbl = QLabel(f"{time_str} ✓✓")
+        # Double blue ticks for delivered feel
+        time_lbl = QLabel(f"{time_str} <span style='color: #53bdeb; font-weight: 800;'>✓✓</span>")
+        time_lbl.setTextFormat(Qt.RichText)
         time_lbl.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: bold; border: none;")
         bottom_layout.addWidget(time_lbl)
 
@@ -737,6 +787,11 @@ class ChatNotesPageQt(QWidget):
                 return dt.strftime("%Y-%m-%d")
         except Exception:
             return "ملاحظات"
+
+    def _scroll_to_top(self):
+        bar = self.chat_scroll.verticalScrollBar()
+        if bar:
+            bar.setValue(bar.minimum())
 
     def _scroll_to_bottom(self):
         bar = self.chat_scroll.verticalScrollBar()

@@ -66,17 +66,27 @@ class AppCoordinatorQt:
         self.engine.reload_snippets()
 
 def run_app():
+    import ctypes
     from pathlib import Path
     from PySide6.QtGui import QIcon
+
+    try:
+        myappid = "snipglide.text.expander.pro.v2"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
 
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
 
-    icon_path = Path(__file__).resolve().parent / "assets" / "icon.png"
-    if icon_path.exists():
-        app.setWindowIcon(QIcon(str(icon_path)))
+    icon_ico = Path(__file__).resolve().parent / "assets" / "icon.ico"
+    icon_png = Path(__file__).resolve().parent / "assets" / "icon.png"
+    if icon_ico.exists():
+        app.setWindowIcon(QIcon(str(icon_ico)))
+    elif icon_png.exists():
+        app.setWindowIcon(QIcon(str(icon_png)))
 
     coordinator = AppCoordinatorQt(app)
     coordinator.run()

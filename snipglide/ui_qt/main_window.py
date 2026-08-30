@@ -20,6 +20,7 @@ from snipglide.ui_qt.quick_paste_bar import QuickPasteBarQt
 from snipglide.ui_qt.tray_icon import SnipGlideTrayIcon
 from snipglide.ui_qt.email_templates_dialog import EmailTemplatesDialogQt
 from snipglide.ui_qt.floating_chat_head import FloatingChatHead
+from snipglide.ui_qt.web_dev_dialog import WebDevDialogQt
 from snipglide.services.exporter_importer import (
     export_data_to_json, import_data_from_json, export_snippets_to_csv
 )
@@ -38,10 +39,13 @@ class MainWindowQt(QMainWindow):
         self.resize(1440, 900)
         self.setMinimumSize(1200, 750)
 
-        # Set Window Favicon Icon
-        icon_path = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
-        if icon_path.exists():
-            self.setWindowIcon(QIcon(str(icon_path)))
+        # Set Window Favicon Icon (prioritize ICO on Windows)
+        icon_ico = Path(__file__).resolve().parent.parent / "assets" / "icon.ico"
+        icon_png = Path(__file__).resolve().parent.parent / "assets" / "icon.png"
+        if icon_ico.exists():
+            self.setWindowIcon(QIcon(str(icon_ico)))
+        elif icon_png.exists():
+            self.setWindowIcon(QIcon(str(icon_png)))
 
         # Apply Global QSS with Google Arabic font and enlarged base size
         self.setStyleSheet(get_stylesheet(font_family=self.font_family, base_font_size=15, is_dark=True))
@@ -150,6 +154,11 @@ class MainWindowQt(QMainWindow):
         bar = QuickPasteBarQt(self)
         bar.show_centered()
 
+    def open_web_dev_toolbox(self):
+        dlg = WebDevDialogQt(self)
+        if dlg.exec():
+            self.toast("تم نسخ الكود البرمجي بنجاح! 💻", False)
+
     def open_email_templates(self):
         dlg = EmailTemplatesDialogQt(self)
         if dlg.exec():
@@ -179,6 +188,8 @@ class MainWindowQt(QMainWindow):
             elif data == "new_note":
                 self.sidebar.select_page("Notes")
                 self.notes_page.new_note()
+            elif data == "web_dev":
+                self.open_web_dev_toolbox()
             elif data == "email_templates":
                 self.open_email_templates()
             elif data == "toggle_chat_head":
@@ -284,6 +295,7 @@ class MainWindowQt(QMainWindow):
         # Fast Tools
         act_cmd = menu.addAction("⌨️ لوحة الأوامر السريعة (Ctrl+K)")
         act_paste = menu.addAction("⚡ شريط اللصق السريع (Alt+Space)")
+        act_web = menu.addAction("🛠️ مستودع أكواد مبرمج الويب (Web Dev)")
         act_emails = menu.addAction("📧 قوالب البريد الإلكتروني الذكية")
         act_head = menu.addAction("💬 إظهار/إخفاء فقاعة شات نوت العائمة")
         menu.addSeparator()
@@ -326,6 +338,8 @@ class MainWindowQt(QMainWindow):
             self.open_command_palette()
         elif action == act_paste:
             self.open_quick_paste_bar()
+        elif action == act_web:
+            self.open_web_dev_toolbox()
         elif action == act_emails:
             self.open_email_templates()
         elif action == act_head:

@@ -3,7 +3,7 @@ from PySide6.QtGui import QCursor
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QPlainTextEdit, QScrollArea, QFrame, QComboBox, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter
+    QListWidget, QListWidgetItem, QSplitter, QMenu, QApplication
 )
 
 from snipglide.database.note_repo import (
