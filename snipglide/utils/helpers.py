@@ -169,7 +169,7 @@ def apply_rtl_support(widget):
     target.after(50, on_check)
 
 
-def download_and_load_arabic_font() -> str:
+def download_and_load_arabic_font(font_name: str = "Tajawal") -> str:
     import urllib.request
     import ctypes
     import os
@@ -178,25 +178,34 @@ def download_and_load_arabic_font() -> str:
     
     font_dir = Path(os.environ.get("APPDATA", ".")) / "SnipGlide" / "fonts"
     font_dir.mkdir(parents=True, exist_ok=True)
-    font_path = font_dir / "Tajawal-Regular.ttf"
+    
+    font_urls = {
+        "Tajawal": ("Tajawal-Regular.ttf", "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Regular.ttf"),
+        "Cairo": ("Cairo-Regular.ttf", "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Regular.ttf"),
+        "Almarai": ("Almarai-Regular.ttf", "https://github.com/google/fonts/raw/main/ofl/almarai/Almarai-Regular.ttf"),
+    }
+    
+    selected = font_urls.get(font_name, ("Tajawal-Regular.ttf", font_urls["Tajawal"][1]))
+    font_filename, font_url = selected
+    font_path = font_dir / font_filename
     
     if not font_path.exists():
         try:
-            url = "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Regular.ttf"
-            logger.info("Downloading Tajawal Arabic Font from Google Fonts...")
-            urllib.request.urlretrieve(url, str(font_path))
-            logger.info("Tajawal font downloaded successfully.")
+            logger.info(f"Downloading {font_name} Arabic Font from Google Fonts...")
+            urllib.request.urlretrieve(font_url, str(font_path))
+            logger.info(f"{font_name} font downloaded successfully.")
         except Exception as e:
-            logger.error(f"Failed to download Tajawal font: {e}")
+            logger.error(f"Failed to download {font_name} font: {e}")
             return "Segoe UI"
             
     try:
         FR_PRIVATE = 0x10
         res = ctypes.windll.gdi32.AddFontResourceExW(str(font_path), FR_PRIVATE, 0)
         if res != 0:
-            logger.info("Tajawal Arabic font loaded successfully.")
-            return "Tajawal"
+            logger.info(f"{font_name} Arabic font loaded successfully.")
+            return font_name
     except Exception as e:
-        logger.error(f"Failed to load Tajawal font: {e}")
+        logger.error(f"Failed to load {font_name} font: {e}")
         
     return "Segoe UI"
+

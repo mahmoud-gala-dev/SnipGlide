@@ -164,6 +164,28 @@ def initialize_database():
             )
         """)
         
+        # Create chat note sections table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS chat_note_sections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                icon TEXT DEFAULT '💬',
+                color TEXT DEFAULT '#25D366'
+            )
+        """)
+        
+        # Prepopulate default chat sections if empty
+        cursor.execute("SELECT COUNT(*) FROM chat_note_sections")
+        if cursor.fetchone()[0] == 0:
+            default_sections = [
+                ("عام", "💬", "#25D366"),
+                ("أفكار ومشاريع", "💡", "#f59e0b"),
+                ("مهام سريعة", "⚡", "#3b82f6"),
+                ("روابط ومعلومات", "🔗", "#8b5cf6"),
+                ("ملاحظات عمل", "💼", "#0f766e"),
+            ]
+            cursor.executemany("INSERT INTO chat_note_sections (name, icon, color) VALUES (?, ?, ?)", default_sections)
+
         # Create quick chat notes table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS chat_notes (
@@ -171,12 +193,22 @@ def initialize_database():
                 content TEXT NOT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_starred INTEGER DEFAULT 0,
+                section_id INTEGER DEFAULT 1,
                 tags TEXT DEFAULT '',
-                color TEXT DEFAULT '#25D366'
+                color TEXT DEFAULT '#25D366',
+                FOREIGN KEY (section_id) REFERENCES chat_note_sections(id) ON DELETE SET NULL
             )
         """)
+        
+        # Migration: ensure section_id exists if table already existed
+        cursor.execute("PRAGMA table_info(chat_notes)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if "section_id" not in columns:
+            cursor.execute("ALTER TABLE chat_notes ADD COLUMN section_id INTEGER DEFAULT 1")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_created ON chat_notes (created_at DESC, id DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_starred ON chat_notes (is_starred)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_section ON chat_notes (section_id)")
         
         conn.commit()
 

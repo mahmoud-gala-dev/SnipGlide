@@ -195,7 +195,7 @@ class MainWindow(ctk.CTk):
             return
 
         if self.active_page:
-            self.active_page.grid_forget()
+            self.active_page.grid_remove()
 
         page.grid(row=0, column=0, sticky="nsew")
         self.active_page = page

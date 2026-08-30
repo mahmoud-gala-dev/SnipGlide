@@ -81,6 +81,8 @@ class AppCoordinator:
                 self.window.withdraw()
             else:
                 self.window.deiconify()
+                self.window.lift()
+                self.window.focus_force()
                 
         self.window.protocol("WM_DELETE_WINDOW", self.hide_window)
         self._start_tray()
