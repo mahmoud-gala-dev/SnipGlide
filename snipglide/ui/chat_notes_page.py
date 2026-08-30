@@ -24,7 +24,9 @@ class ChatNotesPage(ctk.CTkFrame):
 
         self.starred_filter_active = False
         self._search_job = None
+        self._render_job = None
         self._notes_cache = []
+        self._is_dirty = True
 
         # Grid configuration: Row 0 Header, Row 1 Chat Messages, Row 2 Compose Bar
         self.grid_columnconfigure(0, weight=1)
@@ -281,10 +283,21 @@ class ChatNotesPage(ctk.CTkFrame):
             self.star_btn.configure(fg_color=("gray80", "#1f2c34"), text_color=("black", "white"), text="⭐ المفضلة")
         self.refresh_chat()
 
+    def on_page_activated(self):
+        if getattr(self, "_is_dirty", True):
+            self.refresh_chat(scroll_to_bottom=True)
+        else:
+            self.after(30, self._scroll_to_end)
+
     def refresh_chat(self, scroll_to_bottom: bool = True):
+        if self._render_job:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+
         query = self.search_entry.get().strip()
         notes = get_all_chat_notes(query=query, starred_only=self.starred_filter_active)
         self._notes_cache = notes
+        self._is_dirty = False
 
         total_count = get_chat_notes_count()
         current_count = len(notes)
@@ -300,18 +313,27 @@ class ChatNotesPage(ctk.CTkFrame):
             self._render_empty_state(query)
             return
 
-        last_date_str = None
-        for note in notes:
-            # Check if we should insert a date header divider
+        self._render_chat_batch(notes, start_idx=0, batch_size=20, last_date_str=None, scroll_to_bottom=scroll_to_bottom)
+
+    def _render_chat_batch(self, notes, start_idx, batch_size, last_date_str, scroll_to_bottom):
+        end_idx = min(start_idx + batch_size, len(notes))
+        for i in range(start_idx, end_idx):
+            note = notes[i]
             note_date_str = self._format_date_header(note.created_at)
             if note_date_str != last_date_str:
                 self._render_date_divider(note_date_str)
                 last_date_str = note_date_str
-
             self._render_chat_bubble(note)
 
-        if scroll_to_bottom:
-            self.after(50, self._scroll_to_end)
+        if end_idx < len(notes):
+            self._render_job = self.after(
+                5,
+                lambda: self._render_chat_batch(notes, end_idx, batch_size, last_date_str, scroll_to_bottom),
+            )
+        else:
+            self._render_job = None
+            if scroll_to_bottom:
+                self.after(30, self._scroll_to_end)
 
     def _scroll_to_end(self):
         try:

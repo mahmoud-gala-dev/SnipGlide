@@ -107,6 +107,20 @@ class MainWindow(ctk.CTk):
         self.pages = {}
         # Pre-instantiate only Dashboard for immediate startup
         self._get_or_create_page("Dashboard")
+        # Schedule non-blocking idle pre-warming for remaining pages in background
+        self.after(150, self._prewarm_next_page)
+
+    def _prewarm_next_page(self):
+        for page_id in self.page_order:
+            if page_id not in self.pages or self.pages[page_id] is None:
+                try:
+                    self._get_or_create_page(page_id)
+                except Exception as e:
+                    from snipglide.utils.logger import logger
+                    logger.error(f"Error pre-warming page {page_id}: {e}")
+                # Pre-warm next page after short delay to keep UI thread silky smooth
+                self.after(90, self._prewarm_next_page)
+                return
 
     def _get_or_create_page(self, page_id: str):
         if page_id in self.pages and self.pages[page_id] is not None:
@@ -186,12 +200,17 @@ class MainWindow(ctk.CTk):
         page.grid(row=0, column=0, sticky="nsew")
         self.active_page = page
 
+        # Targeted activation callbacks without redundant full rebuilds
         if page_id == "Dashboard" and hasattr(page, "refresh_stats"):
             page.refresh_stats()
-        elif page_id == "Clipboard" and hasattr(page, "refresh_history"):
-            page.refresh_history()
-        elif page_id == "ChatNotes" and hasattr(page, "refresh_chat"):
-            page.refresh_chat(scroll_to_bottom=True)
+        elif page_id == "Clipboard" and hasattr(page, "on_page_activated"):
+            page.on_page_activated()
+        elif page_id == "ChatNotes" and hasattr(page, "on_page_activated"):
+            page.on_page_activated()
+        elif page_id == "Snippets" and hasattr(page, "on_page_activated"):
+            page.on_page_activated()
+        elif page_id == "Notes" and hasattr(page, "on_page_activated"):
+            page.on_page_activated()
             
     def toast(self, message: str, error: bool = False):
         popup = ctk.CTkToplevel(self)
@@ -228,8 +247,16 @@ class MainWindow(ctk.CTk):
     def _refresh_all_views(self):
         snippets_page = self.pages.get("Snippets")
         if snippets_page:
+            snippets_page._is_dirty = True
             snippets_page.update_group_dropdowns()
             snippets_page.refresh_list()
+        notes_page = self.pages.get("Notes")
+        if notes_page:
+            notes_page._is_dirty = True
+            notes_page.update_category_dropdowns()
+        chat_page = self.pages.get("ChatNotes")
+        if chat_page:
+            chat_page._is_dirty = True
         self._notify_snippets_changed()
 
     def _notify_snippets_changed(self):

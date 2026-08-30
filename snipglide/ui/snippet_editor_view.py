@@ -25,8 +25,10 @@ class SnippetEditorView(ctk.CTkFrame):
         self.selected_index = None
         self.snippets_list = []
         self._refresh_job = None
+        self._render_job = None
         self._preview_job = None
         self._groups_cache = []
+        self._is_dirty = True
         
         self.grid_columnconfigure(0, weight=1)
         self.grid_columnconfigure(1, weight=2)
@@ -260,7 +262,11 @@ class SnippetEditorView(ctk.CTkFrame):
                 self.toast_callback("Group created successfully!")
             except Exception as e:
                 self.toast_callback(f"Failed to create group: {e}", error=True)
-                
+
+    def on_page_activated(self):
+        if getattr(self, "_is_dirty", True):
+            self.refresh_list()
+
     def update_group_dropdowns(self):
         self._groups_cache = get_all_groups()
         display_groups = [f"{g.icon} {g.name}" for g in self._groups_cache]
@@ -270,22 +276,26 @@ class SnippetEditorView(ctk.CTkFrame):
     def _schedule_refresh_list(self):
         if self._refresh_job:
             self.after_cancel(self._refresh_job)
-        self._refresh_job = self.after(180, self.refresh_list)
-        
+        self._refresh_job = self.after(160, self.refresh_list)
+
     def refresh_list(self):
         self._refresh_job = None
+        if self._render_job:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
-            
+
         query = self.search_entry.get().strip().lower()
         selected_filter = self.group_filter.get()
-        
+
         # Clean group filter name
         clean_filter = "All Groups"
         if selected_filter != "All Groups":
             parts = selected_filter.split(" ", 1)
             clean_filter = parts[1] if len(parts) > 1 else selected_filter
-            
+
         # Resolve group names for mapping
         groups = self._groups_cache or get_all_groups()
         groups_icons = {g.id: g.icon for g in groups}
@@ -296,20 +306,25 @@ class SnippetEditorView(ctk.CTkFrame):
         max_visible = 150
         visible = get_snippets_for_list(query=query, group_id=selected_group_id, limit=max_visible + 1)
         self.snippets_list = visible[:max_visible]
-                
+        self._is_dirty = False
+
         if not visible:
             ctk.CTkLabel(self.scroll_list, text="No snippets match.", text_color="gray").pack(pady=20)
             return
-            
-        hidden_count = max(0, len(visible) - max_visible)
-        for i, s in enumerate(visible[:max_visible]):
+
+        # Render first batch immediately for instant display, then stream remaining items non-blockingly
+        self._render_snippet_batch(visible[:max_visible], groups_icons, start_idx=0, batch_size=25, max_visible=max_visible, total_found=len(visible))
+
+    def _render_snippet_batch(self, items, groups_icons, start_idx, batch_size, max_visible, total_found):
+        end_idx = min(start_idx + batch_size, len(items))
+        for i in range(start_idx, end_idx):
+            s = items[i]
             icon = groups_icons.get(s.group_id, "📁")
             fav = "⭐ " if s.favorite else ""
             preview = s.replacement.replace("\n", " ")
             if len(preview) > 30:
                 preview = preview[:30] + "..."
-                
-            # Keep index pointer
+
             btn = ctk.CTkButton(
                 self.scroll_list,
                 text=f"{fav}{icon} {s.shortcut}\n{preview}",
@@ -318,16 +333,24 @@ class SnippetEditorView(ctk.CTkFrame):
                 fg_color=("gray88", "gray18"),
                 hover_color=("gray80", "gray25"),
                 text_color=("black", "white"),
-                command=lambda snippet_id=s.id: self._select_snippet_by_id(snippet_id)
+                command=lambda snippet_id=s.id: self._select_snippet_by_id(snippet_id),
             )
             btn.pack(fill="x", pady=4)
 
-        if hidden_count:
-            ctk.CTkLabel(
-                self.scroll_list,
-                text=f"{hidden_count} more results hidden. Refine search to narrow the list.",
-                text_color="gray",
-            ).pack(pady=10)
+        if end_idx < len(items):
+            self._render_job = self.after(
+                5,
+                lambda: self._render_snippet_batch(items, groups_icons, end_idx, batch_size, max_visible, total_found),
+            )
+        else:
+            self._render_job = None
+            hidden_count = max(0, total_found - max_visible)
+            if hidden_count:
+                ctk.CTkLabel(
+                    self.scroll_list,
+                    text=f"{hidden_count} more results hidden. Refine search to narrow the list.",
+                    text_color="gray",
+                ).pack(pady=10)
 
     def _select_snippet_by_id(self, snippet_id: int):
         snippet = get_snippet_by_id(snippet_id)

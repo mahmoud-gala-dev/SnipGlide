@@ -23,6 +23,7 @@ class ClipboardHistoryPage(ctk.CTkFrame):
         self.total_pages = 1
         self._last_refresh = 0
         self._force_next_refresh = True
+        self._is_dirty = True
 
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
@@ -63,12 +64,17 @@ class ClipboardHistoryPage(ctk.CTkFrame):
 
         self.refresh_history()
 
+    def on_page_activated(self):
+        if getattr(self, "_is_dirty", True):
+            self.refresh_history()
+
     def refresh_history(self):
         now_ts = time.time()
         if not self._force_next_refresh and now_ts - self._last_refresh < 3:
             return
 
         self._force_next_refresh = False
+        self._is_dirty = False
         self._last_refresh = now_ts
 
         for widget in self.scroll_list.winfo_children():

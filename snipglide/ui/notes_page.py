@@ -24,10 +24,12 @@ class NotesPage(ctk.CTkFrame):
         self.category_display_to_id = {}
         self.category_id_to_display = {}
         self._refresh_job = None
+        self._render_job = None
         self._editor_settings_job = None
         self._autosave_job = None
         self._last_copied_selection = ""
         self._last_saved_state = None
+        self._is_dirty = True
         self.editor_direction = get_note_setting("editor_direction", "auto")
         self.editor_font_size = self._get_int_note_setting("editor_font_size", 14, 10, 28)
         self.editor_line_spacing = self._get_int_note_setting("editor_line_spacing", 4, 0, 20)
@@ -378,8 +380,16 @@ class NotesPage(ctk.CTkFrame):
             self.category_filter.set("All Notes")
             set_note_setting("last_category_filter", "All Notes")
 
+    def on_page_activated(self):
+        if getattr(self, "_is_dirty", True):
+            self.refresh_list()
+
     def refresh_list(self):
         self._refresh_job = None
+        if self._render_job:
+            self.after_cancel(self._render_job)
+            self._render_job = None
+
         for widget in self.scroll_list.winfo_children():
             widget.destroy()
 
@@ -388,13 +398,18 @@ class NotesPage(ctk.CTkFrame):
         cat_id = self.category_display_to_id.get(selected_cat)
         max_visible = 150
         notes = get_notes_for_list(query=query, category_id=cat_id, limit=max_visible + 1)
+        self._is_dirty = False
 
         if not notes:
             ctk.CTkLabel(self.scroll_list, text="No notes found.", text_color="gray").pack(pady=20)
             return
 
-        hidden_count = max(0, len(notes) - max_visible)
-        for note in notes[:max_visible]:
+        self._render_notes_batch(notes[:max_visible], start_idx=0, batch_size=25, max_visible=max_visible, total_found=len(notes))
+
+    def _render_notes_batch(self, items, start_idx, batch_size, max_visible, total_found):
+        end_idx = min(start_idx + batch_size, len(items))
+        for i in range(start_idx, end_idx):
+            note = items[i]
             cat_display = self.category_id_to_display.get(note.category_id, "Uncategorized")
             pin_prefix = "[Pinned] " if note.pinned else ""
             preview = note.content.replace("\n", " ").strip()[:60]
@@ -413,12 +428,20 @@ class NotesPage(ctk.CTkFrame):
             )
             btn.pack(fill="x", pady=4)
 
-        if hidden_count:
-            ctk.CTkLabel(
-                self.scroll_list,
-                text=f"{hidden_count} more notes hidden. Refine search to narrow the list.",
-                text_color="gray",
-            ).pack(pady=10)
+        if end_idx < len(items):
+            self._render_job = self.after(
+                5,
+                lambda: self._render_notes_batch(items, end_idx, batch_size, max_visible, total_found),
+            )
+        else:
+            self._render_job = None
+            hidden_count = max(0, total_found - max_visible)
+            if hidden_count:
+                ctk.CTkLabel(
+                    self.scroll_list,
+                    text=f"{hidden_count} more notes hidden. Refine search to narrow the list.",
+                    text_color="gray",
+                ).pack(pady=10)
 
     def _select_note_by_id(self, note_id: int):
         note = get_note_by_id(note_id)
