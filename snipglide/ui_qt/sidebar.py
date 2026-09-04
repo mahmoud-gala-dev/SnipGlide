@@ -40,6 +40,7 @@ class SidebarQt(QFrame):
             ("Snippets", "✂️ الاختصارات (Snippets)", "#16a34a"),
             ("Notes", "📝 الملاحظات (Notes)", "#f59e0b"),
             ("ChatNotes", "💬 شات نوت (Chat Notes)", "#25D366"),
+            ("Notepad", "🗒️ المفكرة (Notepad)", "#0ea5e9"),
             ("Search", "🔍 البحث الموحد (Search)", "#14b8a6"),
             ("Clipboard", "📋 سجل الحافظة (Clipboard)", "#06b6d4"),
         ]

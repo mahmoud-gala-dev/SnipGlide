@@ -35,7 +35,7 @@ def get_stylesheet(font_family: str = "Tajawal", base_font_size: int = 15, is_da
         input_border_focus = "#25D366"
 
     return f"""
-    * {{
+    *:not(#notepadTextEditor) {{
         font-family: "{font_family}", "Segoe UI", "Tahoma", sans-serif;
         font-size: {base_font_size}px;
         color: {text_primary};
@@ -104,7 +104,7 @@ def get_stylesheet(font_family: str = "Tajawal", base_font_size: int = 15, is_da
         font-size: {base_font_size}px;
     }}
 
-    QPlainTextEdit, QTextEdit {{
+    QPlainTextEdit:not(#notepadTextEditor), QTextEdit {{
         background-color: {bg_input};
         color: {text_primary};
         border: 2px solid {input_border};
@@ -115,7 +115,7 @@ def get_stylesheet(font_family: str = "Tajawal", base_font_size: int = 15, is_da
         selection-color: #ffffff;
     }}
 
-    QPlainTextEdit:focus, QTextEdit:focus {{
+    QPlainTextEdit:not(#notepadTextEditor):focus, QTextEdit:focus {{
         background-color: {bg_input_focus};
         border: 2px solid {input_border_focus};
     }}

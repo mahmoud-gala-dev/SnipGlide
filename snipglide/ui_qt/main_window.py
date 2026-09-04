@@ -21,6 +21,7 @@ from snipglide.ui_qt.tray_icon import SnipGlideTrayIcon
 from snipglide.ui_qt.email_templates_dialog import EmailTemplatesDialogQt
 from snipglide.ui_qt.floating_chat_head import FloatingChatHead
 from snipglide.ui_qt.web_dev_dialog import WebDevDialogQt
+from snipglide.ui_qt.notepad_page import NotepadPageQt
 from snipglide.services.exporter_importer import (
     export_data_to_json, import_data_from_json, export_snippets_to_csv
 )
@@ -106,7 +107,12 @@ class MainWindowQt(QMainWindow):
         self.pages["ChatNotes"] = self.chat_page
         self.stack.addWidget(self.chat_page)
 
-        # 5. Search
+        # 5. Notepad (Windows Notepad Full-Featured)
+        self.notepad_page = NotepadPageQt(toast_callback=self.toast, parent=self)
+        self.pages["Notepad"] = self.notepad_page
+        self.stack.addWidget(self.notepad_page)
+
+        # 6. Search
         self.search_page = SearchPageQt(toast_callback=self.toast, parent=self)
         self.pages["Search"] = self.search_page
         self.stack.addWidget(self.search_page)
@@ -238,6 +244,9 @@ class MainWindowQt(QMainWindow):
             elif data == "new_note":
                 self.sidebar.select_page("Notes")
                 self.notes_page.new_note()
+            elif data == "new_notepad":
+                self.sidebar.select_page("Notepad")
+                self.notepad_page.new_tab()
             elif data == "web_dev":
                 self.open_web_dev_toolbox()
             elif data == "email_templates":
@@ -356,6 +365,7 @@ class MainWindowQt(QMainWindow):
         nav_snip = nav_menu.addAction("✂️ إدارة الاختصارات (Snippets)")
         nav_note = nav_menu.addAction("📝 الملاحظات العادية (Notes)")
         nav_chat = nav_menu.addAction("💬 شات نوت الواتساب (Chat Notes)")
+        nav_notepad = nav_menu.addAction("🗒️ مفكرة ويندوز (Notepad)")
         nav_search = nav_menu.addAction("🔍 البحث الموحد الشامل (Search)")
         nav_clip = nav_menu.addAction("📋 سجل الحافظة (Clipboard)")
 
@@ -364,6 +374,7 @@ class MainWindowQt(QMainWindow):
         actions_menu.setStyleSheet(menu_style)
         act_new_snip = actions_menu.addAction("➕ إنشاء اختصار جديد")
         act_new_note = actions_menu.addAction("📝 كتابة ملاحظة جديدة")
+        act_new_notepad = actions_menu.addAction("🗒️ فتح مستند جديد في المفكرة")
         act_focus_chat = actions_menu.addAction("💬 التركيز على شات نوت")
         act_seed_demo = actions_menu.addAction("🌱 إضافة عينات وبيانات تجريبية")
 
@@ -401,6 +412,8 @@ class MainWindowQt(QMainWindow):
             self.sidebar.select_page("Notes")
         elif action == nav_chat:
             self.sidebar.select_page("ChatNotes")
+        elif action == nav_notepad:
+            self.sidebar.select_page("Notepad")
         elif action == nav_search:
             self.sidebar.select_page("Search")
         elif action == nav_clip:
@@ -411,6 +424,9 @@ class MainWindowQt(QMainWindow):
         elif action == act_new_note:
             self.sidebar.select_page("Notes")
             self.notes_page.new_note()
+        elif action == act_new_notepad:
+            self.sidebar.select_page("Notepad")
+            self.notepad_page.new_tab()
         elif action == act_focus_chat:
             self.sidebar.select_page("ChatNotes")
             self.chat_page.message_input.setFocus()
@@ -441,6 +457,12 @@ class MainWindowQt(QMainWindow):
         self.snippets_page.new_snippet(initial_content=text)
 
     def closeEvent(self, event):
+        if hasattr(self, "notepad_page") and self.notepad_page:
+            try:
+                self.notepad_page._save_session_state()
+            except Exception:
+                pass
+
         if hasattr(self, "tray_icon") and self.tray_icon and self.tray_icon.isVisible():
             event.ignore()
             self.hide()
