@@ -1,7 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_data_files
 
-datas = []
+datas = [
+    ('snipglide/assets', 'snipglide/assets'),
+]
 datas += collect_data_files('customtkinter')
 
 
@@ -10,7 +12,17 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=datas,
-    hiddenimports=['pynput.keyboard._win32', 'pynput.mouse._win32', 'pystray._win32', 'arabic_reshaper', 'bidi.algorithm'],
+    hiddenimports=[
+        'pynput.keyboard._win32',
+        'pynput.mouse._win32',
+        'pystray._win32',
+        'arabic_reshaper',
+        'bidi.algorithm',
+        'cryptography',
+        'pygments',
+        'openpyxl',
+        'yaml',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -39,4 +51,6 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon='snipglide/assets/icon.ico',
 )
+

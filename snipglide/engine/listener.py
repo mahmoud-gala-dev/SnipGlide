@@ -7,6 +7,7 @@ from snipglide.database.snippet_repo import get_enabled_snippets, increment_usag
 from snipglide.database.autocorrect_repo import get_all_corrections
 from snipglide.engine.parser import parse_variables, get_form_fields, replace_form_fields
 from snipglide.engine.window_tracker import get_active_window_info
+from snipglide.utils.helpers import get_clipboard_text, set_clipboard_text
 from snipglide.utils.logger import logger
 
 class ExpansionEngine:
@@ -21,29 +22,22 @@ class ExpansionEngine:
         self.suspended = False
         self._lock = threading.RLock()
         
-        # Cache with longer TTL to reduce database queries
+        # Cache with TTL to reduce database queries
         self._last_snippets_fetch = 0
         self._last_corrections_fetch = 0
         self._cached_snippets = []
-        self._plain_snippets_by_last = {}
-        self._plain_snippets_by_last_lower = {}
+        self._plain_snippets = []
         self._regex_snippets = []
-        self._snippet_order = {}
         self._cached_corrections = {}
-        self._min_plain_trigger_len = 1
-        self._has_regex_snippets = False
         self._cached_blacklist_raw = None
         self._cached_blacklist = []
-        self._cache_ttl = 5.0  # Cache TTL in seconds (increased for better performance)
+        self._cache_ttl = 3.0
         
-        # Throttle window info checks to reduce system calls
+        # Throttle window info checks
         self._last_window_check = 0
-        self._window_check_interval = 0.5  # Check window info every 500ms max
+        self._window_check_interval = 0.3
         self._cached_window_info = ("", "")
-        
-        # Low-power mode when idle
-        self._last_key_time = 0
-        self._idle_threshold = 30.0  # Consider idle after 30 seconds
+        self._last_key_time = time.time()
 
     def start(self):
         if self.listener is not None:
@@ -52,12 +46,15 @@ class ExpansionEngine:
         self.listener = keyboard.Listener(on_press=self._on_press)
         self.listener.daemon = True
         self.listener.start()
-        logger.info("Expansion engine started (optimized mode).")
+        logger.info("Expansion engine started successfully.")
 
     def stop(self):
         self.running = False
         if self.listener:
-            self.listener.stop()
+            try:
+                self.listener.stop()
+            except Exception:
+                pass
             self.listener = None
         logger.info("Expansion engine stopped.")
 
@@ -66,16 +63,14 @@ class ExpansionEngine:
         with self._lock:
             self._last_snippets_fetch = 0
             self._cached_snippets = []
+            self._plain_snippets = []
+            self._regex_snippets = []
             self.buffer = ""
         logger.info("Snippets reloaded in expansion engine.")
 
     def set_suspended(self, value: bool):
         self.suspended = value
         self.buffer = ""
-
-    def _is_idle_mode(self) -> bool:
-        """Check if we're in idle mode (reduced processing)."""
-        return (time.time() - self._last_key_time) > self._idle_threshold
 
     def _on_press(self, key):
         # 1. Global Hotkey Check: Ctrl + PrintScreen to open/restore/focus application
@@ -91,7 +86,6 @@ class ExpansionEngine:
             )
             if is_print_screen:
                 import ctypes
-                # Check VK_CONTROL (0x11), VK_LCONTROL (0xA2), VK_RCONTROL (0xA3)
                 user32 = ctypes.windll.user32
                 ctrl_pressed = bool(
                     (user32.GetAsyncKeyState(0x11) & 0x8000) or
@@ -116,10 +110,12 @@ class ExpansionEngine:
             return
 
         try:
+            # Handle Backspace
             if key == keyboard.Key.backspace:
                 self.buffer = self.buffer[:-1]
                 return
 
+            # Handle reset / navigation keys
             if key in {
                 keyboard.Key.space, keyboard.Key.enter, keyboard.Key.tab,
                 keyboard.Key.esc, keyboard.Key.left, keyboard.Key.right,
@@ -128,31 +124,34 @@ class ExpansionEngine:
                 keyboard.Key.delete,
             }:
                 if key in {keyboard.Key.space, keyboard.Key.enter, keyboard.Key.tab}:
-                    if not self._is_sensitive_window():
-                        self._check_autocorrect(key)
+                    self._check_autocorrect(key)
                 self.buffer = ""
                 return
 
+            # Extract character
             char = getattr(key, "char", None)
             if char is None:
+                # Modifier keys alone (Shift, Ctrl, Alt) do not modify or clear buffer
+                return
+
+            # Check for control chords (e.g. Ctrl+C = \x03, Ctrl+V = \x16, etc.)
+            if ord(char) < 32 and char not in ("\t", "\n", "\r"):
+                self.buffer = ""
                 return
 
             self.buffer += char
             max_len = int(settings.get("max_buffer", 250))
             self.buffer = self.buffer[-max_len:]
 
-            if not self._get_cached_snippets():
-                return
-            if not self._has_regex_snippets and len(self.buffer) < self._min_plain_trigger_len:
+            snippets = self._get_cached_snippets()
+            if not snippets:
                 return
 
             win_title, win_proc = self._get_cached_window_info()
-            if self._is_sensitive_window(win_title):
-                self.buffer = ""
-                return
 
+            # Check user blacklist if configured
             blacklist = settings.get("blacklist", "")
-            if blacklist:
+            if blacklist and win_proc:
                 for bp in self._get_cached_blacklist(blacklist):
                     if bp in win_proc.lower():
                         self.buffer = ""
@@ -168,49 +167,44 @@ class ExpansionEngine:
             self.buffer = ""
 
     def _find_snippet_match(self, settings: dict, win_title: str, win_proc: str):
+        self._get_cached_snippets()
         case_sensitive = settings.get("case_sensitive", True)
-        last_char = self.buffer[-1:] if self.buffer else ""
-        if case_sensitive:
-            candidates = self._plain_snippets_by_last.get(last_char, [])
-        else:
-            candidates = self._plain_snippets_by_last_lower.get(last_char.lower(), [])
+        cur_buffer = self.buffer
+        cur_buffer_lower = cur_buffer.lower()
 
-        best = None
-        best_order = float("inf")
-
-        for s in candidates:
+        # Check plain snippets (sorted by length descending - longest match first)
+        for s in self._plain_snippets:
             if not self._passes_window_filters(s, win_title, win_proc):
                 continue
             shortcut = s.shortcut
             if not shortcut:
                 continue
             if case_sensitive:
-                matched = self.buffer.endswith(shortcut)
+                if cur_buffer.endswith(shortcut):
+                    return (shortcut, s)
             else:
-                matched = self.buffer.lower().endswith(shortcut.lower())
-            if matched:
-                order = self._snippet_order.get(id(s), best_order)
-                if order < best_order:
-                    best = (shortcut, s)
-                    best_order = order
+                if cur_buffer_lower.endswith(shortcut.lower()):
+                    # Return actual typed slice length
+                    matched_slice = cur_buffer[-len(shortcut):]
+                    return (matched_slice, s)
 
+        # Check regex snippets
         for pattern, s in self._regex_snippets:
             if not self._passes_window_filters(s, win_title, win_proc):
                 continue
-            match = pattern.search(self.buffer)
+            match = pattern.search(cur_buffer)
             if match:
-                order = self._snippet_order.get(id(s), best_order)
-                if order < best_order:
-                    best = (match.group(0), s)
-                    best_order = order
+                return (match.group(0), s)
 
-        return best
+        return None
 
     def _passes_window_filters(self, s, win_title: str, win_proc: str) -> bool:
-        if s.app_filter and s.app_filter.lower() not in win_proc.lower():
-            return False
-        if s.window_filter and s.window_filter.lower() not in win_title.lower():
-            return False
+        if s.app_filter and win_proc:
+            if s.app_filter.strip().lower() not in win_proc.lower():
+                return False
+        if s.window_filter and win_title:
+            if s.window_filter.strip().lower() not in win_title.lower():
+                return False
         return True
             
     def _get_cached_window_info(self):
@@ -220,12 +214,6 @@ class ExpansionEngine:
             self._cached_window_info = get_active_window_info()
             self._last_window_check = now
         return self._cached_window_info
-
-    def _is_sensitive_window(self, win_title: str = None) -> bool:
-        if win_title is None:
-            win_title, _ = self._get_cached_window_info()
-        lower_title = win_title.lower()
-        return "password" in lower_title or "login" in lower_title or "sign in" in lower_title
 
     def _expand(self, trigger: str, snippet):
         with self._lock:
@@ -243,20 +231,48 @@ class ExpansionEngine:
 
                 replacement = parse_variables(replacement, snippet.usage_counter)
 
+                # 1. Release modifier keys so Shift+Backspace or Ctrl+Shift+V don't collide
+                for mod_key in (
+                    keyboard.Key.shift, keyboard.Key.shift_r,
+                    keyboard.Key.ctrl, keyboard.Key.ctrl_r,
+                    keyboard.Key.alt, keyboard.Key.alt_r
+                ):
+                    try:
+                        self.controller.release(mod_key)
+                    except Exception:
+                        pass
+
+                time.sleep(0.008)
+
+                # 2. Erase the trigger using Backspace
                 for _ in range(len(trigger)):
                     self.controller.press(keyboard.Key.backspace)
                     self.controller.release(keyboard.Key.backspace)
-                    time.sleep(0.001)  # Reduced delay for faster deletion
+                    time.sleep(0.004)
 
-                self.controller.type(replacement)
+                time.sleep(0.01)
+
+                # 3. Paste replacement text via Clipboard (fastest, supports multiline, RTL, emojis, code)
+                orig_clip = get_clipboard_text()
+                copied_ok = set_clipboard_text(replacement)
+                if copied_ok:
+                    self.controller.press(keyboard.Key.ctrl)
+                    self.controller.press("v")
+                    self.controller.release("v")
+                    self.controller.release(keyboard.Key.ctrl)
+                    time.sleep(0.04)
+                    if orig_clip is not None:
+                        set_clipboard_text(orig_clip)
+                else:
+                    self.controller.type(replacement)
+
                 self.buffer = ""
-                
                 increment_usage(snippet.id)
                 self._play_expansion_sound()
             except Exception as e:
                 logger.error(f"Expansion failed: {e}")
             finally:
-                time.sleep(0.02)  # Reduced delay
+                time.sleep(0.02)
                 self.suspended = False
 
     def invalidate_cache(self):
@@ -267,7 +283,9 @@ class ExpansionEngine:
         now = time.time()
         if now - self._last_snippets_fetch > self._cache_ttl:
             try:
-                self._cached_snippets = sorted(get_enabled_snippets(), key=lambda x: len(x.shortcut), reverse=True)
+                snippets = get_enabled_snippets()
+                # Sort longest shortcut first
+                self._cached_snippets = sorted(snippets, key=lambda x: len(x.shortcut or ""), reverse=True)
                 self._rebuild_snippet_indexes()
             except Exception as e:
                 logger.error(f"Failed to fetch snippets: {e}")
@@ -275,14 +293,10 @@ class ExpansionEngine:
         return self._cached_snippets
 
     def _rebuild_snippet_indexes(self):
-        self._plain_snippets_by_last = {}
-        self._plain_snippets_by_last_lower = {}
+        self._plain_snippets = []
         self._regex_snippets = []
-        self._snippet_order = {}
-        plain_lengths = []
 
-        for index, snippet in enumerate(self._cached_snippets):
-            self._snippet_order[id(snippet)] = index
+        for snippet in self._cached_snippets:
             shortcut = snippet.shortcut or ""
             if not shortcut:
                 continue
@@ -294,12 +308,7 @@ class ExpansionEngine:
                     logger.warning(f"Invalid regex snippet ignored: {shortcut} ({e})")
                 continue
 
-            plain_lengths.append(len(shortcut))
-            self._plain_snippets_by_last.setdefault(shortcut[-1], []).append(snippet)
-            self._plain_snippets_by_last_lower.setdefault(shortcut[-1].lower(), []).append(snippet)
-
-        self._min_plain_trigger_len = min(plain_lengths) if plain_lengths else 1
-        self._has_regex_snippets = bool(self._regex_snippets)
+            self._plain_snippets.append(snippet)
 
     def _get_cached_corrections(self):
         now = time.time()
@@ -338,8 +347,22 @@ class ExpansionEngine:
                 for _ in range(len(typo)):
                     self.controller.press(keyboard.Key.backspace)
                     self.controller.release(keyboard.Key.backspace)
-                    time.sleep(0.001)  # Reduced delay
-                self.controller.type(correction)
+                    time.sleep(0.004)
+                time.sleep(0.01)
+
+                orig_clip = get_clipboard_text()
+                copied_ok = set_clipboard_text(correction)
+                if copied_ok:
+                    self.controller.press(keyboard.Key.ctrl)
+                    self.controller.press("v")
+                    self.controller.release("v")
+                    self.controller.release(keyboard.Key.ctrl)
+                    time.sleep(0.03)
+                    if orig_clip is not None:
+                        set_clipboard_text(orig_clip)
+                else:
+                    self.controller.type(correction)
+
                 self._play_expansion_sound()
             except Exception as e:
                 logger.error(f"Autocorrect failed: {e}")
@@ -352,7 +375,11 @@ class ExpansionEngine:
         if settings.get("play_sound", True):
             try:
                 import winsound
-                import threading
-                threading.Thread(target=lambda: winsound.Beep(2100, 32), daemon=True).start()
+                from pathlib import Path
+                sound_file = Path(__file__).resolve().parent.parent / "assets" / "expand_sound.wav"
+                if sound_file.exists():
+                    winsound.PlaySound(str(sound_file), winsound.SND_FILENAME | winsound.SND_ASYNC | winsound.SND_NODEFAULT)
+                else:
+                    winsound.MessageBeep(winsound.MB_ICONASTERISK)
             except Exception:
                 pass

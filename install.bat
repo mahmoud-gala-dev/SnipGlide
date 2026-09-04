@@ -1,68 +1,76 @@
 @echo off
-chcp 65001 >nul
+setlocal
 cd /d "%~dp0"
+title SnipGlide Pro - Installer
 
 echo ======================================================
-echo    SnipGlide Pro - Installer ^& Setup Script
-echo    تثبيت وإعداد سكريبت وبيئة SnipGlide
+echo    SnipGlide Pro - Installer and Setup Script
 echo ======================================================
 echo.
 
-REM Check if Python is installed
+REM 1. Check Python
 python --version >nul 2>&1
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Python is not installed or not in PATH!
-    echo [خطأ] بايثون غير مثبت أو غير مضاف إلى متغيرات النظام PATH.
-    echo Please install Python 3.10+ from python.org and check "Add to PATH".
-    pause
-    exit /b 1
-)
+if %ERRORLEVEL% NEQ 0 goto NO_PYTHON
 
-echo [1/4] Checking Python version...
+echo [1/4] Python detected:
 python --version
 
+REM 2. Create Virtual Environment if not exists
 echo.
-echo [2/4] Setting up Virtual Environment (.venv)...
-if not exist .venv (
-    echo Creating new virtual environment...
-    python -m venv .venv
-    if %ERRORLEVEL% NEQ 0 (
-        echo [ERROR] Failed to create virtual environment.
-        pause
-        exit /b 1
-    )
-    echo Virtual environment created successfully.
-) else (
-    echo Virtual environment already exists.
-)
+echo [2/4] Setting up Virtual Environment...
+if exist ".venv\Scripts\python.exe" goto VENV_EXISTS
+echo Creating virtual environment...
+python -m venv .venv
+if %ERRORLEVEL% NEQ 0 goto VENV_FAIL
+echo Virtual environment created successfully.
+goto INSTALL_REQ
 
+:VENV_EXISTS
+echo Virtual environment already exists.
+
+:INSTALL_REQ
+REM 3. Install requirements
 echo.
-echo [3/4] Upgrading PIP and installing dependencies...
+echo [3/4] Installing dependencies...
 .venv\Scripts\python.exe -m pip install --upgrade pip
 .venv\Scripts\python.exe -m pip install -r requirements.txt
-if %ERRORLEVEL% NEQ 0 (
-    echo [ERROR] Failed to install some dependencies. Please check your internet connection.
-    pause
-    exit /b 1
-)
+if %ERRORLEVEL% NEQ 0 goto REQ_FAIL
+
+REM 4. Create Shortcut
+echo.
+echo [4/4] Creating Desktop Shortcut...
+powershell -ExecutionPolicy Bypass -File "make_shortcut.ps1"
 
 echo.
-echo [4/4] Verifying installation and Creating Desktop Shortcut...
-.venv\Scripts\python.exe -c "import PySide6, pynput, PIL, openpyxl, pygments, cryptography, yaml, sounddevice, soundfile, numpy; print('All core packages imported successfully!')"
-if %ERRORLEVEL% NEQ 0 (
-    echo [WARNING] Some packages failed verification.
-) else (
-    echo [INFO] Creating Desktop Shortcut...
-    powershell -ExecutionPolicy Bypass -File .\make_shortcut.ps1
-    echo.
-    echo ======================================================
-    echo    SUCCESS! تم التثبيت بنجاح وجاهز للتشغيل
-    echo    يمكنك تشغيل البرنامج الآن عبر اختصار سطح المكتب مباشرة
-    echo    أو الضغط على Ctrl + PrintScreen من أي مكان لفتحه
-    echo ======================================================
-)
-
+echo ======================================================
+echo    SUCCESS: Installation completed successfully!
+echo    SnipGlide Pro is ready to use.
+echo ======================================================
 echo.
-echo Launching SnipGlide in background...
-start "" .venv\Scripts\pythonw.exe app.py
+
+REM Launch in background
+echo Launching SnipGlide Pro...
+start "" ".venv\Scripts\pythonw.exe" app.py
 exit /b 0
+
+:NO_PYTHON
+echo.
+echo [ERROR] Python is not installed or not in PATH!
+echo Please install Python 3.10+ from python.org and check Add to PATH.
+echo.
+pause
+exit /b 1
+
+:VENV_FAIL
+echo.
+echo [ERROR] Failed to create virtual environment.
+echo.
+pause
+exit /b 1
+
+:REQ_FAIL
+echo.
+echo [ERROR] Failed to install dependencies. Please check your internet connection.
+echo.
+pause
+exit /b 1

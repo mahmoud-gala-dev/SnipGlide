@@ -22,12 +22,18 @@ echo.
 echo [2/3] Building standalone executable with PyInstaller...
 .venv\Scripts\pyinstaller --noconfirm --clean --onefile --windowed ^
     --name SnipGlide ^
+    --icon snipglide/assets/icon.ico ^
+    --add-data "snipglide/assets;snipglide/assets" ^
     --collect-data customtkinter ^
     --hidden-import pynput.keyboard._win32 ^
     --hidden-import pynput.mouse._win32 ^
     --hidden-import pystray._win32 ^
     --hidden-import arabic_reshaper ^
     --hidden-import bidi.algorithm ^
+    --hidden-import cryptography ^
+    --hidden-import pygments ^
+    --hidden-import openpyxl ^
+    --hidden-import yaml ^
     app.py
 
 if %ERRORLEVEL% NEQ 0 (

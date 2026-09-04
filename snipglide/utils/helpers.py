@@ -9,49 +9,104 @@ def resource_path(relative: str) -> Path:
         return Path(sys._MEIPASS) / relative
     return Path(__file__).resolve().parent.parent.parent / relative
 
-def get_clipboard_text(max_chars: int = 10000) -> str:
-    """Fast, thread-safe, native Windows clipboard text reader without GUI overhead."""
-    import ctypes
-    from ctypes import wintypes
-    
+import os
+import time
+import ctypes
+
+_user32 = ctypes.windll.user32 if os.name == "nt" else None
+_kernel32 = ctypes.windll.kernel32 if os.name == "nt" else None
+
+if _kernel32:
+    _kernel32.GlobalAlloc.restype = ctypes.c_void_p
+    _kernel32.GlobalAlloc.argtypes = [ctypes.c_uint, ctypes.c_size_t]
+    _kernel32.GlobalLock.restype = ctypes.c_void_p
+    _kernel32.GlobalLock.argtypes = [ctypes.c_void_p]
+    _kernel32.GlobalUnlock.argtypes = [ctypes.c_void_p]
+    _kernel32.GlobalFree.argtypes = [ctypes.c_void_p]
+
+if _user32:
+    _user32.OpenClipboard.argtypes = [ctypes.c_void_p]
+    _user32.OpenClipboard.restype = ctypes.c_bool
+    _user32.CloseClipboard.argtypes = []
+    _user32.CloseClipboard.restype = ctypes.c_bool
+    _user32.EmptyClipboard.argtypes = []
+    _user32.EmptyClipboard.restype = ctypes.c_bool
+    _user32.SetClipboardData.restype = ctypes.c_void_p
+    _user32.SetClipboardData.argtypes = [ctypes.c_uint, ctypes.c_void_p]
+    _user32.GetClipboardData.restype = ctypes.c_void_p
+    _user32.GetClipboardData.argtypes = [ctypes.c_uint]
+
+
+def get_clipboard_text(max_chars: int = 50000) -> str:
+    """Fast, thread-safe, native Windows clipboard text reader."""
+    if os.name != "nt" or not _user32:
+        return ""
+
     CF_UNICODETEXT = 13
-    user32 = ctypes.windll.user32
-    kernel32 = ctypes.windll.kernel32
-    
-    user32.OpenClipboard.argtypes = [wintypes.HWND]
-    user32.OpenClipboard.restype = wintypes.BOOL
-    user32.CloseClipboard.argtypes = []
-    user32.CloseClipboard.restype = wintypes.BOOL
-    user32.GetClipboardData.argtypes = [wintypes.UINT]
-    user32.GetClipboardData.restype = wintypes.HANDLE
-    kernel32.GlobalLock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalLock.restype = wintypes.LPVOID
-    kernel32.GlobalUnlock.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalUnlock.restype = wintypes.BOOL
-    kernel32.GlobalSize.argtypes = [wintypes.HGLOBAL]
-    kernel32.GlobalSize.restype = ctypes.c_size_t
+    for _ in range(8):
+        if _user32.OpenClipboard(None):
+            break
+        time.sleep(0.01)
+    else:
+        return ""
 
     try:
-        if not user32.OpenClipboard(None):
+        h_data = _user32.GetClipboardData(CF_UNICODETEXT)
+        if not h_data:
             return ""
-        handle = user32.GetClipboardData(CF_UNICODETEXT)
-        if not handle:
-            user32.CloseClipboard()
-            return ""
-        if kernel32.GlobalSize(handle) > (max_chars + 1) * 2:
-            user32.CloseClipboard()
-            return ""
-        pointer = kernel32.GlobalLock(handle)
-        if not pointer:
-            user32.CloseClipboard()
+        ptr = _kernel32.GlobalLock(h_data)
+        if not ptr:
             return ""
         try:
-            return ctypes.string_at(pointer).decode("utf-16-le").split("\x00", 1)[0]
+            val = ctypes.wstring_at(ptr)
+            if len(val) > max_chars:
+                return val[:max_chars]
+            return val
         finally:
-            kernel32.GlobalUnlock(handle)
-            user32.CloseClipboard()
+            _kernel32.GlobalUnlock(h_data)
     except Exception:
         return ""
+    finally:
+        _user32.CloseClipboard()
+
+
+def set_clipboard_text(text: str) -> bool:
+    """Fast, thread-safe, native Windows clipboard text writer."""
+    if os.name != "nt" or not _user32:
+        return False
+
+    CF_UNICODETEXT = 13
+    GMEM_MOVEABLE = 0x0002
+    data = (text + "\x00").encode("utf-16-le")
+    h_mem = _kernel32.GlobalAlloc(GMEM_MOVEABLE, len(data))
+    if not h_mem:
+        return False
+
+    ptr = _kernel32.GlobalLock(h_mem)
+    if not ptr:
+        _kernel32.GlobalFree(h_mem)
+        return False
+
+    ctypes.memmove(ptr, data, len(data))
+    _kernel32.GlobalUnlock(h_mem)
+
+    for _ in range(8):
+        if _user32.OpenClipboard(None):
+            break
+        time.sleep(0.01)
+    else:
+        _kernel32.GlobalFree(h_mem)
+        return False
+
+    try:
+        _user32.EmptyClipboard()
+        res = _user32.SetClipboardData(CF_UNICODETEXT, h_mem)
+        return bool(res)
+    except Exception:
+        return False
+    finally:
+        _user32.CloseClipboard()
+
 
 def safe_clear_frame(frame):
     """
@@ -220,4 +275,46 @@ def download_and_load_arabic_font(font_name: str = "Tajawal") -> str:
         logger.error(f"Failed to load {font_name} font via GDI: {e}")
         
     return actual_family if actual_family else "Segoe UI"
+
+
+def ensure_sound_asset() -> Path:
+    """Ensure that the soft expansion sound WAV asset exists, generating it if needed."""
+    import wave
+    import struct
+    import math
+
+    assets_dir = Path(__file__).resolve().parent.parent / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    sound_path = assets_dir / "expand_sound.wav"
+
+    if sound_path.exists() and sound_path.stat().st_size > 500:
+        return sound_path
+
+    try:
+        sample_rate = 44100
+        duration = 0.055  # 55ms - short, subtle, soft chime
+        num_samples = int(sample_rate * duration)
+
+        with wave.open(str(sound_path), "w") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+
+            for i in range(num_samples):
+                t = i / sample_rate
+                envelope = math.sin(math.pi * (i / num_samples)) ** 0.6 * math.exp(-18 * t)
+                freq = 680 - (140 * (i / num_samples))
+                sample_val = (
+                    0.65 * math.sin(2 * math.pi * freq * t) +
+                    0.35 * math.sin(2 * math.pi * (freq * 1.5) * t)
+                ) * envelope
+
+                int_sample = int(sample_val * 32767 * 0.22)
+                int_sample = max(-32768, min(32767, int_sample))
+                wav_file.writeframes(struct.pack("<h", int_sample))
+    except Exception:
+        pass
+
+    return sound_path
+
 

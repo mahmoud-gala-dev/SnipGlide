@@ -1,3 +1,10 @@
+"""
+Legacy Entry Point (Tkinter / CustomTkinter)
+--------------------------------------------
+Note: The active production GUI is built with Qt6 in `snipglide/main_qt.py`.
+This module is preserved for legacy reference.
+"""
+
 import sys
 import threading
 from PIL import Image, ImageDraw

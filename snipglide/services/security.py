@@ -33,8 +33,9 @@ def verify_password(password: str, stored_hash: str) -> bool:
     legacy_hash = hashlib.sha256(password.encode("utf-8")).hexdigest()
     return hmac.compare_digest(legacy_hash, stored_hash)
 
-def get_key_from_password(password: str) -> bytes:
-    digest = hashlib.sha256(password.encode("utf-8")).digest()
+def get_key_from_password(password: str, salt: bytes = b"snipglide_static_kdf_salt_v2") -> bytes:
+    """Derive a Fernet-compatible 32-byte key from password using PBKDF2-HMAC-SHA256."""
+    digest = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, 100_000)
     return base64.urlsafe_b64encode(digest)
 
 def encrypt_text(text: str, password: str) -> str:
@@ -51,6 +52,13 @@ def decrypt_text(encrypted: str, password: str) -> str:
         key = get_key_from_password(password)
         f = Fernet(key)
         return f.decrypt(encrypted.encode("utf-8")).decode("utf-8")
-    except Exception as e:
-        logger.error(f"Decryption failed: {e}")
-        raise ValueError("Decryption failed")
+    except Exception:
+        # Backwards compatibility fallback for older legacy SHA256-derived keys
+        try:
+            legacy_digest = hashlib.sha256(password.encode("utf-8")).digest()
+            legacy_key = base64.urlsafe_b64encode(legacy_digest)
+            f_legacy = Fernet(legacy_key)
+            return f_legacy.decrypt(encrypted.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Decryption failed: {e}")
+            raise ValueError("Decryption failed")

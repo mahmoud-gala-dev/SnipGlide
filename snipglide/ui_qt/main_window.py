@@ -316,7 +316,7 @@ class MainWindowQt(QMainWindow):
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
-        menu.setStyleSheet("""
+        menu_style = """
             QMenu {
                 background-color: #182229;
                 border: 1.5px solid #2a3942;
@@ -327,7 +327,7 @@ class MainWindowQt(QMainWindow):
                 font-weight: bold;
             }
             QMenu::item {
-                padding: 10px 24px;
+                padding: 9px 22px;
                 border-radius: 8px;
                 margin: 2px 4px;
             }
@@ -340,58 +340,57 @@ class MainWindowQt(QMainWindow):
                 background-color: #2a3942;
                 margin: 6px 10px;
             }
-        """)
+        """
+        menu.setStyleSheet(menu_style)
 
-        # Fast Tools
-        act_cmd = menu.addAction("⌨️ لوحة الأوامر السريعة (Ctrl+K)")
+        # ── Quick Access Direct Actions ──
         act_paste = menu.addAction("⚡ شريط اللصق السريع (Alt+Space)")
-        act_web = menu.addAction("🛠️ مستودع أكواد مبرمج الويب (Web Dev)")
-        act_emails = menu.addAction("📧 قوالب البريد الإلكتروني الذكية")
-        act_head = menu.addAction("💬 إظهار/إخفاء فقاعة شات نوت العائمة")
+        act_cmd = menu.addAction("⌨️ لوحة الأوامر السريعة (Ctrl+K)")
+        act_head = menu.addAction("💬 فقاعة شات نوت العائمة")
         menu.addSeparator()
 
-        # Navigation Section
-        menu.addSection("🚀 التنقل السريع")
-        nav_dash = menu.addAction("📊 لوحة التحكم (Dashboard)")
-        nav_snip = menu.addAction("✂️ إدارة الاختصارات (Snippets)")
-        nav_note = menu.addAction("📝 الملاحظات العادية (Notes)")
-        nav_chat = menu.addAction("💬 شات نوت الواتساب (Chat Notes)")
-        nav_search = menu.addAction("🔍 البحث الموحد الشامل (Search)")
-        nav_clip = menu.addAction("📋 سجل الحافظة (Clipboard)")
+        # ── 1. Navigation Submenu ──
+        nav_menu = menu.addMenu("🚀 التنقل السريع")
+        nav_menu.setStyleSheet(menu_style)
+        nav_dash = nav_menu.addAction("📊 لوحة التحكم (Dashboard)")
+        nav_snip = nav_menu.addAction("✂️ إدارة الاختصارات (Snippets)")
+        nav_note = nav_menu.addAction("📝 الملاحظات العادية (Notes)")
+        nav_chat = nav_menu.addAction("💬 شات نوت الواتساب (Chat Notes)")
+        nav_search = nav_menu.addAction("🔍 البحث الموحد الشامل (Search)")
+        nav_clip = nav_menu.addAction("📋 سجل الحافظة (Clipboard)")
 
-        menu.addSeparator()
+        # ── 2. Quick Actions Submenu ──
+        actions_menu = menu.addMenu("⚡ إجراءات سريعة")
+        actions_menu.setStyleSheet(menu_style)
+        act_new_snip = actions_menu.addAction("➕ إنشاء اختصار جديد")
+        act_new_note = actions_menu.addAction("📝 كتابة ملاحظة جديدة")
+        act_focus_chat = actions_menu.addAction("💬 التركيز على شات نوت")
+        act_seed_demo = actions_menu.addAction("🌱 إضافة عينات وبيانات تجريبية")
 
-        # Quick Actions Section
-        menu.addSection("⚡ إجراءات سريعة")
-        act_new_snip = menu.addAction("➕ إنشاء اختصار جديد")
-        act_new_note = menu.addAction("📝 كتابة ملاحظة جديدة")
-        act_focus_chat = menu.addAction("💬 التركيز على شات نوت")
-        act_seed_demo = menu.addAction("🌱 إضافة عينات وبيانات تجريبية")
+        # ── 3. Tools & Templates Submenu ──
+        tools_menu = menu.addMenu("🛠️ أدوات وقوالب")
+        tools_menu.setStyleSheet(menu_style)
+        act_web = tools_menu.addAction("💻 مستودع أكواد الويب (Web Dev)")
+        act_emails = tools_menu.addAction("📧 قوالب البريد الإلكتروني")
 
-        menu.addSeparator()
-
-        # Data & Tools
-        menu.addSection("💾 النسخ الاحتياطي والبيانات")
-        act_export = menu.addAction("💾 تصدير كافة البيانات (JSON)")
-        act_import = menu.addAction("📥 استيراد البيانات (JSON)")
-        act_export_csv = menu.addAction("📊 تصدير الاختصارات إلى (CSV)")
-
-        menu.addSeparator()
-        act_reload_engine = menu.addAction("🔄 إعادة تحميل الاختصارات في المحرك")
-        act_clear_clip = menu.addAction("🗑️ مسح سجل الحافظة")
+        # ── 4. Backup & Maintenance Submenu ──
+        data_menu = menu.addMenu("💾 النسخ الاحتياطي والبيانات")
+        data_menu.setStyleSheet(menu_style)
+        act_export = data_menu.addAction("💾 تصدير كافة البيانات (JSON)")
+        act_import = data_menu.addAction("📥 استيراد البيانات (JSON)")
+        act_export_csv = data_menu.addAction("📊 تصدير الاختصارات (CSV)")
+        data_menu.addSeparator()
+        act_reload_engine = data_menu.addAction("🔄 إعادة تحميل الاختصارات في المحرك")
+        act_clear_clip = data_menu.addAction("🗑️ مسح سجل الحافظة")
 
         action = menu.exec(event.globalPos())
         if not action:
             return
 
-        if action == act_cmd:
-            self.open_command_palette()
-        elif action == act_paste:
+        if action == act_paste:
             self.open_quick_paste_bar()
-        elif action == act_web:
-            self.open_web_dev_toolbox()
-        elif action == act_emails:
-            self.open_email_templates()
+        elif action == act_cmd:
+            self.open_command_palette()
         elif action == act_head:
             self.toggle_floating_chat_head()
         elif action == nav_dash:
@@ -417,6 +416,10 @@ class MainWindowQt(QMainWindow):
             self.chat_page.message_input.setFocus()
         elif action == act_seed_demo:
             self.chat_page._seed_demo_data()
+        elif action == act_web:
+            self.open_web_dev_toolbox()
+        elif action == act_emails:
+            self.open_email_templates()
         elif action == act_export:
             self.export_json()
         elif action == act_import:

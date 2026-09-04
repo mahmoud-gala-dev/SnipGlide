@@ -54,11 +54,12 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
         act_cmd = menu.addAction("⌨️ لوحة الأوامر (Ctrl+K)")
         act_cmd.triggered.connect(self._open_cmd_palette)
 
-        act_emails = menu.addAction("📧 قوالب البريد الإلكتروني الذكية")
-        act_emails.triggered.connect(self._open_email_templates)
-
-        act_head = menu.addAction("💬 إظهار/إخفاء فقاعة شات نوت العائمة")
+        # Tools Submenu
+        tools_menu = menu.addMenu("🛠️ أدوات وقوالب")
+        act_head = tools_menu.addAction("💬 فقاعة شات نوت العائمة")
         act_head.triggered.connect(self._toggle_chat_head)
+        act_emails = tools_menu.addAction("📧 قوالب البريد الإلكتروني")
+        act_emails.triggered.connect(self._open_email_templates)
 
         menu.addSeparator()
 

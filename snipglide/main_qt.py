@@ -8,7 +8,7 @@ from snipglide.database.connection import initialize_database
 from snipglide.engine.listener import ExpansionEngine
 from snipglide.services.clipboard_monitor import ClipboardMonitor
 from snipglide.ui_qt.main_window import MainWindowQt
-from snipglide.utils.helpers import download_and_load_arabic_font
+from snipglide.utils.helpers import download_and_load_arabic_font, ensure_sound_asset
 from snipglide.utils.logger import logger
 
 class HotkeySignalBridge(QObject):
@@ -20,6 +20,8 @@ class AppCoordinatorQt:
         initialize_database()
         self.settings = load_settings()
         self.window = None
+
+        ensure_sound_asset()
 
         # Thread-safe Qt signal bridge for global hotkeys
         self.hotkey_bridge = HotkeySignalBridge()
@@ -78,7 +80,26 @@ class AppCoordinatorQt:
     def notify_snippets_changed(self):
         self.engine.reload_snippets()
 
+from snipglide.utils.single_instance import SingleInstance
+
+_single_instance_guard = None
+
 def run_app():
+    global _single_instance_guard
+    _single_instance_guard = SingleInstance("snipglide_text_expander_pro_v2_mutex")
+    if not _single_instance_guard.acquire():
+        try:
+            import ctypes
+            hwnd = ctypes.windll.user32.FindWindowW(None, f"{APP_NAME} - Professional Edition")
+            if hwnd:
+                ctypes.windll.user32.ShowWindow(hwnd, 9)
+                ctypes.windll.user32.SetForegroundWindow(hwnd)
+        except Exception:
+            pass
+        print("SnipGlide is already running in background / system tray.")
+        logger.info("SnipGlide instance already running. Exiting secondary process.")
+        sys.exit(0)
+
     import ctypes
     from pathlib import Path
     from PySide6.QtGui import QIcon
@@ -103,3 +124,4 @@ def run_app():
 
     coordinator = AppCoordinatorQt(app)
     coordinator.run()
+
