@@ -63,8 +63,8 @@ print(f"✓ Word and Line stats accurate: {stats['words']} words, {stats['lines'
 ed2.insertPlainText("\nMore lines")
 assert ed2.is_modified is True, "Modified flag was not updated"
 idx2 = page.tab_widget.indexOf(tab2)
-assert "•" in page.tab_widget.tabText(idx2), "Modified dot indicator not shown on tab"
-print("✓ Modified indicator '•' displayed correctly on tab")
+assert "•" not in page.tab_widget.tabText(idx2), "Dot indicator should NOT be shown beside file name (removed per user request)"
+print("✓ Dot indicator '•' successfully removed beside file name")
 
 # 4. Test Edit & Line Operations
 print("\n[Test 4] Testing Edit Operations (Case transforms, F5, Duplicate, Sort)...")
@@ -148,12 +148,77 @@ print("✓ Save to SnipGlide Notes passed")
 page.send_to_chat_notes()
 print("✓ Send to Chat Notes passed")
 
-# 8. Test Session Saving & Loading
-print("\n[Test 8] Testing Session Save & Restore...")
+# 8. Test Tab Renaming
+print("\n[Test 8] Testing Tab Renaming...")
+tab2.title = "RenamedDoc.txt"
+page._on_editor_modified(tab2)
+assert "RenamedDoc.txt" in page.tab_widget.tabText(idx2), "Tab renaming failed"
+print("✓ Tab renaming passed: Tab text updated to RenamedDoc.txt")
+
+# 9. Test Folder Organization & Filtering
+print("\n[Test 9] Testing Folder Creation & Filtering...")
+assert "العامة" in page.folders, "Default folder 'العامة' missing"
+page.folders.append("مشاريع")
+tab2.folder = "مشاريع"
+page._refresh_folder_bar()
+page.set_folder_filter("folder", "مشاريع")
+assert page.tab_widget.isTabVisible(idx2) is True, "Tab2 should be visible in 'مشاريع' folder"
+page.set_folder_filter("all", "كافة الملفات")
+assert page.tab_widget.isTabVisible(idx2) is True, "Tab2 should be visible in 'كافة الملفات'"
+print("✓ Folder creation, tab movement, and visibility filtering passed")
+
+# 10. Test Favorites System
+print("\n[Test 10] Testing Favorites System...")
+tab2.is_favorite = True
+page._on_editor_modified(tab2)
+assert "⭐" in page.tab_widget.tabText(idx2), "Favorite star '⭐' missing from tab title"
+page.set_folder_filter("favorites", "")
+assert page.tab_widget.isTabVisible(idx2) is True, "Favorite tab should be visible under favorites filter"
+page.set_folder_filter("all", "كافة الملفات")
+print("✓ Favorites starring '⭐' and favorites filtering passed")
+
+# 11. Test Archive System
+print("\n[Test 11] Testing Archive System...")
+tab2.is_archived = True
+page._on_editor_modified(tab2)
+assert "📦" in page.tab_widget.tabText(idx2), "Archive icon '📦' missing from tab title"
+page._refresh_tab_visibility()
+assert page.tab_widget.isTabVisible(idx2) is False, "Archived tab should be hidden in normal 'all' view"
+page.set_folder_filter("archive", "")
+assert page.tab_widget.isTabVisible(idx2) is True, "Archived tab should be visible in 'archive' view"
+# Restore from archive for clean state
+tab2.is_archived = False
+page._on_editor_modified(tab2)
+page.set_folder_filter("all", "كافة الملفات")
+assert page.tab_widget.isTabVisible(idx2) is True, "Restored tab should be visible again"
+print("✓ Archive hiding and restoring passed")
+
+# 12. Test Fullscreen Focus Mode
+print("\n[Test 12] Testing Fullscreen Focus Mode...")
+assert page._is_focus_mode is False, "Initial focus mode should be False"
+page.enter_focus_mode()
+assert page._is_focus_mode is True, "Focus mode should be True after enter"
+assert page.header_card.isVisible() is False, "Header card should be hidden in focus mode"
+assert page.toolbar.isVisible() is False, "Toolbar should be hidden in focus mode"
+assert page.folder_bar_widget.isVisible() is False, "Folder bar should be hidden in focus mode"
+assert page.focus_exit_pill.isVisible() is True, "Exit focus pill should be visible"
+page.exit_focus_mode()
+assert page._is_focus_mode is False, "Focus mode should be False after exit"
+assert page.header_card.isVisible() is True, "Header card should be restored after exit"
+assert page.toolbar.isVisible() is True, "Toolbar should be restored after exit"
+assert page.folder_bar_widget.isVisible() is True, "Folder bar should be restored after exit"
+print("✓ Fullscreen Focus Mode enter & exit restoration passed")
+
+# 13. Test Session Saving & Loading with Folders, Favorites, and Archive
+print("\n[Test 13] Testing Session Save & Restore with Organization Metadata...")
 page._save_session_state()
 session = load_notepad_session()
 assert "tabs" in session and len(session["tabs"]) >= 2, "Session tabs saving failed"
-print(f"✓ Session saved {len(session['tabs'])} tabs to disk successfully")
+saved_t2 = [t for t in session["tabs"] if t.get("title") == "RenamedDoc.txt"][0]
+assert saved_t2["folder"] == "مشاريع", f"Expected folder 'مشاريع', got {saved_t2.get('folder')}"
+assert saved_t2["is_favorite"] is True, "Expected is_favorite to be True"
+assert "folders" in session and "مشاريع" in session["folders"], "Custom folders list not saved in session"
+print(f"✓ Session metadata (folders={session['folders']}, tab_folder={saved_t2['folder']}, fav={saved_t2['is_favorite']}) saved successfully")
 
 # Cleanup temp file
 try:
@@ -161,5 +226,5 @@ try:
 except Exception:
     pass
 
-print("\n🎉 ALL TESTS PASSED SUCCESSFULLY! Windows Notepad module is fully operational! 🎉")
+print("\n🎉 ALL 13 TEST SUITES PASSED SUCCESSFULLY! All requested features are verified! 🎉")
 app.quit()

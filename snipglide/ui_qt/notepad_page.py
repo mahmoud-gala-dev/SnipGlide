@@ -789,10 +789,21 @@ class SmoothTabBar(QTabBar):
 
 class NotepadTab(QWidget):
     """Container holding a single Notepad document editor."""
-    def __init__(self, file_path: Optional[str] = None, title: str = "مستند جديد", parent=None):
+    def __init__(
+        self,
+        file_path: Optional[str] = None,
+        title: str = "مستند جديد",
+        folder: str = "العامة",
+        is_favorite: bool = False,
+        is_archived: bool = False,
+        parent=None
+    ):
         super().__init__(parent)
         self.file_path = file_path
         self.title = title
+        self.folder = folder if folder else "العامة"
+        self.is_favorite = is_favorite
+        self.is_archived = is_archived
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(0)
@@ -813,6 +824,16 @@ class NotepadPageQt(QWidget):
         self.active_font = QFont("Consolas", 14)
         self.is_current_direction_rtl = False
 
+        # Organization state (Folders, Favorites, Archive)
+        self.folders: List[str] = ["العامة", "العمل", "شخصي"]
+        self.active_folder: str = "كافة الملفات"
+        self.active_filter: str = "all"  # "all", "favorites", "archive", "folder"
+
+        # Focus / Fullscreen mode state
+        self._is_focus_mode: bool = False
+        self._saved_geometry = None
+        self._saved_maximized: bool = False
+
         self.session_save_timer = QTimer(self)
         self.session_save_timer.setSingleShot(True)
         self.session_save_timer.setInterval(1500)
@@ -827,15 +848,15 @@ class NotepadPageQt(QWidget):
         main_layout.setSpacing(10)
 
         # ── 1. Top Header Card (Spacious, rounded, high-contrast) ──
-        header_card = QFrame(self)
-        header_card.setStyleSheet("""
+        self.header_card = QFrame(self)
+        self.header_card.setStyleSheet("""
             QFrame {
                 background-color: #111b21;
                 border: 1.5px solid #202c33;
                 border-radius: 12px;
             }
         """)
-        top_bar = QHBoxLayout(header_card)
+        top_bar = QHBoxLayout(self.header_card)
         top_bar.setContentsMargins(14, 10, 14, 10)
         top_bar.setSpacing(12)
 
@@ -855,6 +876,27 @@ class NotepadPageQt(QWidget):
         top_bar.addLayout(title_layout)
 
         top_bar.addStretch()
+
+        # Focus mode button
+        btn_focus = QPushButton("⛶ وضع التركيز (F11)")
+        btn_focus.setToolTip("وضع التركيز بكامل الشاشة على المفكرة فقط مع إخفاء كافة القوائم والأشرطة (Esc أو F11 للخروج)")
+        btn_focus.setStyleSheet("""
+            QPushButton {
+                background-color: #1e1b4b;
+                color: #c084fc;
+                border: 1.5px solid #7e22ce;
+                border-radius: 8px;
+                padding: 7px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #7e22ce;
+                color: #ffffff;
+            }
+        """)
+        btn_focus.clicked.connect(self.toggle_focus_mode)
+        top_bar.addWidget(btn_focus)
 
         # Quick New Document button
         btn_quick_new = QPushButton("➕ مستند جديد")
@@ -897,7 +939,37 @@ class NotepadPageQt(QWidget):
         btn_save_all.clicked.connect(self.save_all_tabs)
         top_bar.addWidget(btn_save_all)
 
-        main_layout.addWidget(header_card)
+        main_layout.addWidget(self.header_card)
+
+        # Floating Exit Focus Mode Pill Button
+        self.focus_exit_pill = QPushButton("↩️ إنهاء وضع التركيز (Esc أو F11)", self)
+        self.focus_exit_pill.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(15, 23, 42, 0.95);
+                color: #38bdf8;
+                border: 2px solid #0284c7;
+                border-radius: 18px;
+                padding: 8px 24px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #0284c7;
+                color: #ffffff;
+            }
+        """)
+        self.focus_exit_pill.setCursor(Qt.PointingHandCursor)
+        self.focus_exit_pill.clicked.connect(self.exit_focus_mode)
+        self.focus_exit_pill.hide()
+
+        # Focus mode shortcuts
+        self.esc_shortcut = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        self.esc_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.esc_shortcut.activated.connect(self._on_esc_pressed)
+
+        self.f11_shortcut = QShortcut(QKeySequence(Qt.Key.Key_F11), self)
+        self.f11_shortcut.setContext(Qt.ShortcutContext.WindowShortcut)
+        self.f11_shortcut.activated.connect(self.toggle_focus_mode)
 
         # ── 2. Menu Bar (File, Edit, Format, View, SnipGlide) ──
         self.menu_bar = QMenuBar(self)
@@ -1004,6 +1076,10 @@ class NotepadPageQt(QWidget):
         """)
         main_layout.addWidget(self.toolbar)
 
+        # ── 3.5. Folder & Organization Bar (Folders, Favorites, Archive) ──
+        self._build_folder_bar_ui()
+        main_layout.addWidget(self.folder_bar_widget)
+
         # ── 4. Tab Widget Container with SmoothTabBar & Custom Styling ──
         self.tab_widget = QTabWidget(self)
         self.tab_bar = SmoothTabBar(self.tab_widget)
@@ -1014,6 +1090,7 @@ class NotepadPageQt(QWidget):
 
         self.tab_bar.setContextMenuPolicy(Qt.CustomContextMenu)
         self.tab_bar.customContextMenuRequested.connect(self._on_tab_context_menu)
+        self.tab_bar.tabBarDoubleClicked.connect(self._on_tab_double_clicked)
 
         # Corner Widget (Transparent container for New Tab button)
         corner_widget = QWidget(self)
@@ -1422,6 +1499,11 @@ class NotepadPageQt(QWidget):
         self.act_highlight_line.setChecked(True)
         self.act_highlight_line.triggered.connect(self._on_toggle_highlight_line)
 
+        view_menu.addSeparator()
+        self.act_focus_mode = view_menu.addAction("⛶ وضع التركيز بكامل الشاشة (Focus Mode)")
+        self.act_focus_mode.setShortcut(QKeySequence("F11"))
+        self.act_focus_mode.triggered.connect(self.toggle_focus_mode)
+
         # 5. SnipGlide Tools Menu
         snip_menu = self.menu_bar.addMenu("⚡ سنب جلايد (SnipGlide)")
         snip_menu.addAction("✂️ تحويل المحدد إلى اختصار SnipGlide", self.convert_selection_to_snippet)
@@ -1609,16 +1691,47 @@ class NotepadPageQt(QWidget):
     def _format_tab_title(self, tab: NotepadTab) -> str:
         # Wrap title in LTR isolate so .txt never flips in mixed Arabic/English text
         safe_title = f"\u2066{tab.title}\u2069"
-        if tab.editor.is_modified:
-            return f"• 📄 {safe_title}"
-        return f"📄 {safe_title}"
+        if tab.is_archived:
+            icon = "📦"
+        elif tab.is_favorite:
+            icon = "⭐"
+        else:
+            icon = "📄"
+        return f"{icon} {safe_title}"
 
-    def new_tab(self, file_path: Optional[str] = None, title: Optional[str] = None, initial_text: str = "") -> NotepadTab:
+    def new_tab(
+        self,
+        file_path: Optional[str] = None,
+        title: Optional[str] = None,
+        initial_text: str = "",
+        folder: Optional[str] = None,
+        is_favorite: bool = False,
+        is_archived: bool = False
+    ) -> NotepadTab:
         if not title:
             count = self.tab_widget.count() + 1
             title = f"مستند {count}.txt"
 
-        tab = NotepadTab(file_path=file_path, title=title, parent=self.tab_widget)
+        if not folder:
+            if self.active_filter == "folder" and self.active_folder in self.folders:
+                folder = self.active_folder
+            else:
+                folder = "العامة"
+
+        if self.active_filter == "favorites":
+            is_favorite = True
+
+        if self.active_filter == "archive":
+            self.active_filter = "all"
+
+        tab = NotepadTab(
+            file_path=file_path,
+            title=title,
+            folder=folder,
+            is_favorite=is_favorite,
+            is_archived=is_archived,
+            parent=self.tab_widget
+        )
         editor = tab.editor
 
         # Apply current settings & font
@@ -1640,6 +1753,8 @@ class NotepadPageQt(QWidget):
         self.tab_widget.setCurrentIndex(index)
         editor.setFocus()
 
+        self._refresh_folder_bar()
+        self._refresh_tab_visibility()
         self._update_status_bar()
         self.session_save_timer.start()
         return tab
@@ -1672,6 +1787,29 @@ class NotepadPageQt(QWidget):
                 self.tab_widget.setTabText(idx, formatted)
         self.session_save_timer.start()
 
+    def _on_tab_double_clicked(self, index: int):
+        if index < 0 or index >= self.tab_widget.count():
+            return
+        tab = self.tab_widget.widget(index)
+        if isinstance(tab, NotepadTab):
+            self.rename_tab_dialog(tab)
+
+    def rename_tab_dialog(self, tab: NotepadTab):
+        current_name = tab.title
+        new_name, ok = QInputDialog.getText(
+            self,
+            "إعادة تسمية المستند",
+            "أدخل الاسم الجديد للمستند:",
+            QLineEdit.Normal,
+            current_name
+        )
+        if ok and new_name.strip():
+            clean_name = new_name.strip()
+            tab.title = clean_name
+            self._on_editor_modified(tab)
+            self._toast(f"تم تغيير اسم المستند إلى: {clean_name} ✏️", False)
+            self.session_save_timer.start()
+
     def close_tab(self, index: int) -> bool:
         if index < 0 or index >= self.tab_widget.count():
             return False
@@ -1699,6 +1837,8 @@ class NotepadPageQt(QWidget):
         if self.tab_widget.count() == 0:
             self.new_tab()
 
+        self._refresh_folder_bar()
+        self._refresh_tab_visibility()
         self.session_save_timer.start()
         return True
 
@@ -1716,6 +1856,33 @@ class NotepadPageQt(QWidget):
             return
 
         menu = QMenu(self)
+
+        # 1. Favorites toggle
+        if tab.is_favorite:
+            act_fav = menu.addAction("☆ إزالة من المفضلة")
+        else:
+            act_fav = menu.addAction("⭐ إضافة إلى المفضلة")
+
+        # 2. Folder Submenu
+        folder_menu = menu.addMenu("📁 نقل إلى مجلد...")
+        folder_actions = {}
+        for fld in self.folders:
+            prefix = "✓ " if tab.folder == fld else "  "
+            act_f = folder_menu.addAction(f"{prefix}📂 {fld}")
+            folder_actions[act_f] = fld
+        folder_menu.addSeparator()
+        act_new_folder_move = folder_menu.addAction("➕ مجلد جديد...")
+
+        # 3. Archive toggle
+        if tab.is_archived:
+            act_archive = menu.addAction("📤 استعادة من الأرشيف")
+        else:
+            act_archive = menu.addAction("📦 نقل إلى الأرشيف")
+
+        # 4. Rename
+        act_rename = menu.addAction("✏️ إعادة تسمية المستند...")
+
+        menu.addSeparator()
         act_save = menu.addAction("💾 حفظ")
         act_save_as = menu.addAction("💾 حفظ باسم...")
         menu.addSeparator()
@@ -1730,7 +1897,43 @@ class NotepadPageQt(QWidget):
         if not action:
             return
 
-        if action == act_save:
+        if action == act_fav:
+            tab.is_favorite = not tab.is_favorite
+            self._on_editor_modified(tab)
+            self._refresh_folder_bar()
+            self._refresh_tab_visibility()
+            msg = "تمت إضافة المستند إلى المفضلة ⭐" if tab.is_favorite else "تمت إزالة المستند من المفضلة"
+            self._toast(msg, False)
+            self.session_save_timer.start()
+        elif action in folder_actions:
+            target_fld = folder_actions[action]
+            tab.folder = target_fld
+            self._refresh_folder_bar()
+            self._refresh_tab_visibility()
+            self._toast(f"تم نقل المستند إلى مجلد '{target_fld}' 📁", False)
+            self.session_save_timer.start()
+        elif action == act_new_folder_move:
+            fld_name, ok = QInputDialog.getText(self, "مجلد جديد", "اسم المجلد الجديد:")
+            if ok and fld_name.strip():
+                clean_fld = fld_name.strip()
+                if clean_fld not in self.folders:
+                    self.folders.append(clean_fld)
+                tab.folder = clean_fld
+                self._refresh_folder_bar()
+                self._refresh_tab_visibility()
+                self._toast(f"تم إنشاء المجلد ونقل المستند إلى '{clean_fld}' 📁", False)
+                self.session_save_timer.start()
+        elif action == act_archive:
+            tab.is_archived = not tab.is_archived
+            self._on_editor_modified(tab)
+            self._refresh_folder_bar()
+            self._refresh_tab_visibility()
+            msg = "تم نقل المستند إلى الأرشيف 📦" if tab.is_archived else "تم استعادة المستند من الأرشيف 📤"
+            self._toast(msg, False)
+            self.session_save_timer.start()
+        elif action == act_rename:
+            self.rename_tab_dialog(tab)
+        elif action == act_save:
             self.save_tab(tab)
         elif action == act_save_as:
             self.save_as_tab(tab)
@@ -1759,6 +1962,403 @@ class NotepadPageQt(QWidget):
                 os.startfile(os.path.dirname(tab.file_path))
             else:
                 self._toast("الملف غير محفوظ بعد على القرص", True)
+
+    # ── Folder Bar & Organization Management ──
+    def _build_folder_bar_ui(self):
+        self.folder_bar_widget = QFrame(self)
+        self.folder_bar_widget.setStyleSheet("""
+            QFrame {
+                background-color: #111b21;
+                border: 1.5px solid #202c33;
+                border-radius: 10px;
+                padding: 4px 6px;
+            }
+        """)
+        self.folder_bar_layout = QHBoxLayout(self.folder_bar_widget)
+        self.folder_bar_layout.setContentsMargins(6, 4, 6, 4)
+        self.folder_bar_layout.setSpacing(6)
+
+        self.folder_pills_layout = QHBoxLayout()
+        self.folder_pills_layout.setSpacing(6)
+        self.folder_bar_layout.addLayout(self.folder_pills_layout)
+
+        self.folder_bar_layout.addStretch()
+
+        # Add Folder Button
+        btn_add_fld = QPushButton("➕ مجلد جديد")
+        btn_add_fld.setToolTip("إنشاء مجلد جديد لتنظيم المستندات والتبويبات")
+        btn_add_fld.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #25D366;
+                border: 1.5px solid #2a3942;
+                border-radius: 7px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #25D366;
+                color: #0b141a;
+                border-color: #25D366;
+            }
+        """)
+        btn_add_fld.clicked.connect(self.create_new_folder)
+        self.folder_bar_layout.addWidget(btn_add_fld)
+
+        self._refresh_folder_bar()
+
+    def _compute_counts(self) -> Dict[str, int]:
+        counts = {
+            "all": 0,
+            "favorites": 0,
+            "archive": 0,
+        }
+        for fld in self.folders:
+            counts[fld] = 0
+
+        if hasattr(self, "tab_widget"):
+            for i in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(i)
+                if isinstance(tab, NotepadTab):
+                    if tab.is_archived:
+                        counts["archive"] += 1
+                    else:
+                        counts["all"] += 1
+                        if tab.is_favorite:
+                            counts["favorites"] += 1
+                        fld = tab.folder if tab.folder in counts else "العامة"
+                        counts[fld] = counts.get(fld, 0) + 1
+        return counts
+
+    def _create_pill_btn(self, text: str, is_active: bool) -> QPushButton:
+        btn = QPushButton(text)
+        if is_active:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #172554;
+                    color: #60a5fa;
+                    border: 1.5px solid #3b82f6;
+                    border-radius: 7px;
+                    padding: 5px 12px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #1e3a8a;
+                    color: #93c5fd;
+                }
+            """)
+        else:
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #182229;
+                    color: #94a3b8;
+                    border: 1.5px solid #2a3942;
+                    border-radius: 7px;
+                    padding: 5px 12px;
+                    font-size: 12px;
+                    font-weight: bold;
+                }
+                QPushButton:hover {
+                    background-color: #202c33;
+                    color: #f0f2f5;
+                    border-color: #3b4a54;
+                }
+            """)
+        return btn
+
+    def _refresh_folder_bar(self):
+        if not hasattr(self, "folder_pills_layout"):
+            return
+
+        while self.folder_pills_layout.count() > 0:
+            item = self.folder_pills_layout.takeAt(0)
+            w = item.widget()
+            if w:
+                w.deleteLater()
+
+        counts = self._compute_counts()
+
+        # 1. All Files
+        btn_all = self._create_pill_btn(
+            f"📁 كافة الملفات ({counts['all']})",
+            is_active=(self.active_filter == "all")
+        )
+        btn_all.clicked.connect(lambda: self.set_folder_filter("all", "كافة الملفات"))
+        self.folder_pills_layout.addWidget(btn_all)
+
+        # 2. Favorites
+        btn_fav = self._create_pill_btn(
+            f"⭐ المفضلة ({counts['favorites']})",
+            is_active=(self.active_filter == "favorites")
+        )
+        btn_fav.clicked.connect(lambda: self.set_folder_filter("favorites", ""))
+        self.folder_pills_layout.addWidget(btn_fav)
+
+        # 3. Archive
+        btn_arch = self._create_pill_btn(
+            f"📦 الأرشيف ({counts['archive']})",
+            is_active=(self.active_filter == "archive")
+        )
+        btn_arch.clicked.connect(lambda: self.set_folder_filter("archive", ""))
+        self.folder_pills_layout.addWidget(btn_arch)
+
+        # Separator line
+        sep = QFrame()
+        sep.setFrameShape(QFrame.VLine)
+        sep.setFrameShadow(QFrame.Sunken)
+        sep.setStyleSheet("background-color: #2a3942; width: 1px; margin: 2px 4px;")
+        self.folder_pills_layout.addWidget(sep)
+
+        # Dynamic Folder pills
+        for fld in self.folders:
+            is_act = (self.active_filter == "folder" and self.active_folder == fld)
+            fld_cnt = counts.get(fld, 0)
+            btn_f = self._create_pill_btn(
+                f"📂 {fld} ({fld_cnt})",
+                is_active=is_act
+            )
+            btn_f.setContextMenuPolicy(Qt.CustomContextMenu)
+            btn_f.customContextMenuRequested.connect(
+                lambda pos, name=fld: self._on_folder_pill_context_menu(pos, name)
+            )
+            btn_f.clicked.connect(
+                lambda checked=False, name=fld: self.set_folder_filter("folder", name)
+            )
+            self.folder_pills_layout.addWidget(btn_f)
+
+    def _on_folder_pill_context_menu(self, pos: QPoint, folder_name: str):
+        sender = self.sender()
+        if not sender:
+            return
+        menu = QMenu(self)
+        act_rename = menu.addAction("✏️ إعادة تسمية المجلد...")
+        act_delete = menu.addAction("🗑️ حذف المجلد...")
+        if folder_name == "العامة":
+            act_delete.setEnabled(False)
+
+        action = menu.exec(sender.mapToGlobal(pos))
+        if action == act_rename:
+            self.rename_folder(folder_name)
+        elif action == act_delete:
+            self.delete_folder(folder_name)
+
+    def create_new_folder(self):
+        fld_name, ok = QInputDialog.getText(
+            self, "إنشاء مجلد جديد", "اسم المجلد الجديد:",
+            QLineEdit.Normal, ""
+        )
+        if ok and fld_name.strip():
+            clean_name = fld_name.strip()
+            if clean_name in ["كافة الملفات", "المفضلة", "الأرشيف"]:
+                QMessageBox.warning(self, "اسم محجوز", "هذا الاسم محجوز للنظام، يرجى اختيار اسم آخر.")
+                return
+            if clean_name in self.folders:
+                QMessageBox.information(self, "تنبيه", "هذا المجلد موجود بالفعل.")
+                self.set_folder_filter("folder", clean_name)
+                return
+            self.folders.append(clean_name)
+            self.set_folder_filter("folder", clean_name)
+            self._toast(f"تم إنشاء مجلد جديد: {clean_name} 📂", False)
+            self.session_save_timer.start()
+
+    def rename_folder(self, old_name: str):
+        if old_name == "العامة":
+            QMessageBox.information(self, "تنبيه", "لا يمكن إعادة تسمية المجلد الافتراضي 'العامة'.")
+            return
+        new_name, ok = QInputDialog.getText(
+            self, "إعادة تسمية المجلد", f"الاسم الجديد للمجلد '{old_name}':",
+            QLineEdit.Normal, old_name
+        )
+        if ok and new_name.strip() and new_name.strip() != old_name:
+            clean_name = new_name.strip()
+            if clean_name in self.folders:
+                QMessageBox.warning(self, "تنبيه", "يوجد مجلد آخر بهذا الاسم بالفعل.")
+                return
+            idx = self.folders.index(old_name)
+            self.folders[idx] = clean_name
+            for i in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(i)
+                if isinstance(tab, NotepadTab) and tab.folder == old_name:
+                    tab.folder = clean_name
+            if self.active_folder == old_name:
+                self.active_folder = clean_name
+            self._refresh_folder_bar()
+            self._refresh_tab_visibility()
+            self._toast(f"تمت إعادة تسمية المجلد إلى: {clean_name} ✏️", False)
+            self.session_save_timer.start()
+
+    def delete_folder(self, folder_name: str):
+        if folder_name == "العامة":
+            QMessageBox.information(self, "تنبيه", "لا يمكن حذف مجلد 'العامة' لأنه المجلد الافتراضي للنظام.")
+            return
+        reply = QMessageBox.question(
+            self,
+            "حذف المجلد",
+            f"هل أنت متأكد من حذف المجلد '{folder_name}'؟\nسيتم نقل كافة المستندات داخله تلقائياً إلى مجلد 'العامة'.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            if folder_name in self.folders:
+                self.folders.remove(folder_name)
+            for i in range(self.tab_widget.count()):
+                tab = self.tab_widget.widget(i)
+                if isinstance(tab, NotepadTab) and tab.folder == folder_name:
+                    tab.folder = "العامة"
+            if self.active_folder == folder_name:
+                self.active_folder = "العامة"
+            self._refresh_folder_bar()
+            self._refresh_tab_visibility()
+            self._toast(f"تم حذف مجلد '{folder_name}' ونقل ملفاته إلى 'العامة' 🗑️", False)
+            self.session_save_timer.start()
+
+    def set_folder_filter(self, filter_type: str, folder_name: str = ""):
+        self.active_filter = filter_type
+        self.active_folder = folder_name
+        self._refresh_tab_visibility()
+        self._refresh_folder_bar()
+        self.session_save_timer.start()
+
+    def _refresh_tab_visibility(self):
+        visible_indices = []
+        for i in range(self.tab_widget.count()):
+            tab = self.tab_widget.widget(i)
+            if not isinstance(tab, NotepadTab):
+                continue
+
+            is_vis = False
+            if self.active_filter == "all":
+                is_vis = not tab.is_archived
+            elif self.active_filter == "favorites":
+                is_vis = tab.is_favorite and not tab.is_archived
+            elif self.active_filter == "archive":
+                is_vis = tab.is_archived
+            elif self.active_filter == "folder":
+                is_vis = (tab.folder == self.active_folder) and not tab.is_archived
+
+            self.tab_widget.setTabVisible(i, is_vis)
+            if is_vis:
+                visible_indices.append(i)
+
+        if not visible_indices:
+            if self.active_filter == "folder" and self.active_folder in self.folders:
+                self.new_tab(folder=self.active_folder)
+                return
+            elif self.active_filter == "favorites":
+                self._toast("لا توجد ملفات في المفضلة حالياً ⭐ (انقر بزر الفأرة الأيمن على أي تبويب لإضافته)", False)
+                self.set_folder_filter("all", "كافة الملفات")
+                return
+            elif self.active_filter == "archive":
+                self._toast("الأرشيف فارغ حالياً 📦", False)
+                self.set_folder_filter("all", "كافة الملفات")
+                return
+
+        curr_idx = self.tab_widget.currentIndex()
+        if curr_idx not in visible_indices and visible_indices:
+            self.tab_widget.setCurrentIndex(visible_indices[0])
+
+    # ── Fullscreen Focus Mode ──
+    def toggle_focus_mode(self):
+        if self._is_focus_mode:
+            self.exit_focus_mode()
+        else:
+            self.enter_focus_mode()
+
+    def enter_focus_mode(self):
+        main_win = self.window()
+        self._saved_geometry = main_win.saveGeometry()
+        self._saved_maximized = main_win.isMaximized()
+        self._is_focus_mode = True
+
+        # Hide main window sidebar if present
+        if hasattr(main_win, "sidebar"):
+            main_win.sidebar.hide()
+
+        # Hide distracting toolbars & headers
+        if hasattr(self, "header_card"):
+            self.header_card.hide()
+        if hasattr(self, "menu_bar"):
+            self.menu_bar.hide()
+        if hasattr(self, "toolbar"):
+            self.toolbar.hide()
+        if hasattr(self, "folder_bar_widget"):
+            self.folder_bar_widget.hide()
+        if hasattr(self, "status_bar_widget"):
+            self.status_bar_widget.hide()
+
+        # Maximize editor area
+        self.layout().setContentsMargins(0, 0, 0, 0)
+        self.layout().setSpacing(0)
+
+        main_win.showFullScreen()
+
+        self.focus_exit_pill.show()
+        self.focus_exit_pill.raise_()
+        pw = self.focus_exit_pill.sizeHint().width() + 40
+        ph = 38
+        px = (self.width() - pw) // 2
+        self.focus_exit_pill.setGeometry(px, 12, pw, ph)
+
+        editor = self.get_current_editor()
+        if editor:
+            editor.setFocus()
+
+        self._toast("تم تفعيل وضع التركيز بكامل الشاشة ⛶ (اضغط Esc أو F11 للخروج)", False)
+
+    def exit_focus_mode(self):
+        if not self._is_focus_mode:
+            return
+        self._is_focus_mode = False
+
+        self.focus_exit_pill.hide()
+
+        # Restore headers & toolbars
+        if hasattr(self, "header_card"):
+            self.header_card.show()
+        if hasattr(self, "menu_bar"):
+            self.menu_bar.show()
+        if hasattr(self, "toolbar"):
+            self.toolbar.show()
+        if hasattr(self, "folder_bar_widget"):
+            self.folder_bar_widget.show()
+        if hasattr(self, "status_bar_widget") and self.act_show_status.isChecked():
+            self.status_bar_widget.show()
+
+        # Restore margins
+        self.layout().setContentsMargins(18, 14, 18, 14)
+        self.layout().setSpacing(10)
+
+        # Restore sidebar & window geometry
+        main_win = self.window()
+        if hasattr(main_win, "sidebar"):
+            main_win.sidebar.show()
+
+        if self._saved_maximized:
+            main_win.showMaximized()
+        else:
+            main_win.showNormal()
+            if self._saved_geometry:
+                main_win.restoreGeometry(self._saved_geometry)
+
+        editor = self.get_current_editor()
+        if editor:
+            editor.setFocus()
+
+        self._toast("تم الخروج من وضع التركيز واستعادة الحجم الأصلي ↩️", False)
+
+    def _on_esc_pressed(self):
+        if self._is_focus_mode:
+            self.exit_focus_mode()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self, 'focus_exit_pill') and self.focus_exit_pill.isVisible():
+            pw = self.focus_exit_pill.sizeHint().width() + 40
+            ph = 38
+            px = (self.width() - pw) // 2
+            self.focus_exit_pill.setGeometry(px, 12, pw, ph)
 
     # ── File I/O Operations ──
     def open_file(self, target_path: Optional[str] = None):
@@ -2396,6 +2996,9 @@ class NotepadPageQt(QWidget):
                     "encoding": tab.editor.encoding,
                     "line_ending": tab.editor.line_ending,
                     "direction": "rtl" if tab.editor.layoutDirection() == Qt.RightToLeft else "ltr",
+                    "folder": tab.folder,
+                    "is_favorite": tab.is_favorite,
+                    "is_archived": tab.is_archived,
                 })
 
         editor = self.get_current_editor()
@@ -2405,6 +3008,9 @@ class NotepadPageQt(QWidget):
         session_data = {
             "tabs": tabs_data,
             "active_index": self.tab_widget.currentIndex(),
+            "folders": self.folders,
+            "active_folder": self.active_folder,
+            "active_filter": self.active_filter,
             "settings": {
                 "word_wrap": self.act_word_wrap.isChecked(),
                 "line_numbers": self.act_show_linenums.isChecked(),
@@ -2423,6 +3029,16 @@ class NotepadPageQt(QWidget):
     def _load_session_or_default(self):
         session = load_notepad_session()
         settings = session.get("settings", DEFAULT_NOTEPAD_SETTINGS)
+
+        # Organization state restore
+        self.folders = session.get("folders", ["العامة", "العمل", "شخصي"])
+        if not isinstance(self.folders, list) or not self.folders:
+            self.folders = ["العامة", "العمل", "شخصي"]
+        if "العامة" not in self.folders:
+            self.folders.insert(0, "العامة")
+
+        self.active_folder = session.get("active_folder", "كافة الملفات")
+        self.active_filter = session.get("active_filter", "all")
 
         # Apply settings
         self.act_word_wrap.setChecked(settings.get("word_wrap", True))
@@ -2453,6 +3069,9 @@ class NotepadPageQt(QWidget):
                 fp = t_data.get("file_path")
                 title = t_data.get("title", "مستند جديد")
                 content = t_data.get("content", "")
+                fld = t_data.get("folder", "العامة")
+                is_fav = t_data.get("is_favorite", False)
+                is_arch = t_data.get("is_archived", False)
 
                 # If file exists on disk, reload fresh content if not modified
                 if fp and os.path.exists(fp) and not t_data.get("is_modified", False):
@@ -2462,7 +3081,14 @@ class NotepadPageQt(QWidget):
                     except Exception:
                         pass
 
-                tab = self.new_tab(file_path=fp, title=title, initial_text=content)
+                tab = self.new_tab(
+                    file_path=fp,
+                    title=title,
+                    initial_text=content,
+                    folder=fld,
+                    is_favorite=is_fav,
+                    is_archived=is_arch
+                )
                 tab.editor.is_modified = t_data.get("is_modified", False)
                 tab.editor.encoding = t_data.get("encoding", "UTF-8")
                 tab.editor.line_ending = t_data.get("line_ending", "CRLF")
@@ -2487,10 +3113,13 @@ class NotepadPageQt(QWidget):
                 "# مرحباً بك في مفكرة ويندوز (Windows Notepad) المتطورة في SnipGlide!\n\n"
                 "تم تصميم هذا القسم ليمنحك تجربة تحرير النصوص الأسرع والأكثر راحة، مع كافة مميزات نوت باد ويندوز الحديثة:\n\n"
                 "✨ التبويبات المتعددة (Multi-Tabs): أنشئ عدة ملفات وتنقل بينها بسلاسة عبر زر (+).\n"
+                "📁 تنظيم المجلدات: أنشئ مجلدات لمجموعات ملفاتك وتنقل بينها بضغطة زر واحدة.\n"
+                "⭐ المفضلة والأرشيف: ميز ملاحظاتك الهامة بنجمة وأرشف الملفات المنتهية بكل سهولة.\n"
+                "⛶ وضع التركيز بكامل الشاشة: استمتع بكتابة خالية من أي مشتتات بزر F11 واستعد حجمك بـ Esc.\n"
+                "✏️ إعادة التسمية السريعة: انقر مرتين على أي تبويب لإعادة تسميته فوراً.\n"
                 "💾 استعادة الجلسة التلقائية: مسوداتك وتبويباتك تحفظ تلقائياً ولن تفقد أي عمل عند إغلاق البرنامج!\n"
                 "🔍 شريط البحث والاستبدال المدمج (Ctrl+F و Ctrl+H) مع دعم التعبيرات النمطية و Aa.\n"
                 "⏰ إدراج الوقت والتاريخ عبر زر F5 كويندوز تماماً.\n"
-                "🚀 الانتقال إلى سطر محدد عبر Ctrl+G.\n"
                 "🌐 دعم فوري للغتين العربية والإنجليزية (RTL / LTR).\n"
                 "⚡ التكامل المباشر: تحويل أي نص إلى اختصار أو ملاحظة لاصقة بنقرة واحدة!\n\n"
                 "ابدأ الكتابة الآن أو افتح ملفاتك النصية المفضلة..."
@@ -2501,6 +3130,9 @@ class NotepadPageQt(QWidget):
         self.apply_font_to_all_tabs(self.active_font)
         if self.is_current_direction_rtl:
             self._set_direction(is_rtl=True)
+
+        self._refresh_folder_bar()
+        self._refresh_tab_visibility()
 
     def _toast(self, message: str, error: bool = False):
         if self.toast_callback:

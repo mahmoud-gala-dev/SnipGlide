@@ -16,6 +16,12 @@ DEFAULT_NOTEPAD_SETTINGS = {
     "font_size": 14,
     "zoom_percent": 100,
     "direction": "ltr",
+    "bold": False,
+    "italic": False,
+    "underline": False,
+    "folders": ["العامة", "العمل", "شخصي"],
+    "current_folder": "كافة الملفات",
+    "active_filter": "all",
 }
 
 def load_notepad_session() -> Dict[str, Any]:
@@ -24,12 +30,18 @@ def load_notepad_session() -> Dict[str, Any]:
         try:
             data = json.loads(NOTEPAD_SESSION_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
+                # Ensure folders list exists
+                if "folders" not in data or not isinstance(data["folders"], list):
+                    data["folders"] = ["العامة", "العمل", "شخصي"]
                 return data
         except Exception:
             pass
     return {
         "tabs": [],
         "active_index": 0,
+        "folders": ["العامة", "العمل", "شخصي"],
+        "current_folder": "كافة الملفات",
+        "active_filter": "all",
         "settings": DEFAULT_NOTEPAD_SETTINGS.copy()
     }
 
