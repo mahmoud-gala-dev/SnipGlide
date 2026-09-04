@@ -1,10 +1,10 @@
 import os
 from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon, QFont, QKeySequence, QShortcut
+from PySide6.QtGui import QIcon, QFont, QKeySequence, QShortcut, QCursor
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QStackedWidget,
-    QLabel, QFrame, QApplication, QFileDialog, QMenu
+    QLabel, QFrame, QApplication, QFileDialog, QMenu, QPushButton
 )
 
 from snipglide.ui_qt.styles import get_stylesheet
@@ -70,6 +70,7 @@ class MainWindowQt(QMainWindow):
         # ── Sidebar ──
         self.sidebar = SidebarQt(self)
         self.sidebar.page_selected.connect(self.switch_page)
+        self.sidebar.collapse_requested.connect(self.toggle_sidebar)
         main_layout.addWidget(self.sidebar)
 
         # ── Stacked Pages Container ──
@@ -151,9 +152,9 @@ class MainWindowQt(QMainWindow):
         self.shortcut_paste = QShortcut(QKeySequence("Alt+Space"), self)
         self.shortcut_paste.activated.connect(self.open_quick_paste_bar)
 
-        # Esc -> Minimize window (تصغير النافذة عبر زر Esc)
+        # Esc -> Exit focus mode if active, else minimize window
         self.shortcut_esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
-        self.shortcut_esc.activated.connect(self.showMinimized)
+        self.shortcut_esc.activated.connect(self._on_esc_pressed)
 
         # Ctrl+PrintScreen -> Quick Open/Focus
         try:
@@ -161,6 +162,23 @@ class MainWindowQt(QMainWindow):
             self.shortcut_quick_open.activated.connect(self.show_and_activate)
         except Exception:
             pass
+
+        # Ctrl+B -> Toggle Sidebar Drawer (إظهار / إخفاء القائمة الجانبية)
+        self.shortcut_drawer = QShortcut(QKeySequence("Ctrl+B"), self)
+        self.shortcut_drawer.activated.connect(self.toggle_sidebar)
+
+    def toggle_sidebar(self):
+        """Toggle sidebar visibility (drawer show/hide)."""
+        is_vis = self.sidebar.isVisible()
+        self.sidebar.setVisible(not is_vis)
+        msg = "تم إخفاء القائمة الجانبية (Drawer)" if is_vis else "تم إظهار القائمة الجانبية (Drawer)"
+        self.toast(msg, False)
+        for page in getattr(self, "pages", {}).values():
+            if hasattr(page, "on_sidebar_toggled"):
+                try:
+                    page.on_sidebar_toggled(not is_vis)
+                except Exception:
+                    pass
 
     def show_and_activate(self):
         """Bring window to foreground from background or system tray reliably."""
@@ -475,9 +493,16 @@ class MainWindowQt(QMainWindow):
         else:
             event.accept()
 
+    def _on_esc_pressed(self):
+        """Handle Escape key: if Notepad is in focus mode, exit it first; otherwise minimize."""
+        if hasattr(self, "notepad_page") and getattr(self.notepad_page, "_is_focus_mode", False):
+            self.notepad_page.exit_focus_mode()
+            return
+        self.showMinimized()
+
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
-            self.showMinimized()
+            self._on_esc_pressed()
             event.accept()
             return
         super().keyPressEvent(event)

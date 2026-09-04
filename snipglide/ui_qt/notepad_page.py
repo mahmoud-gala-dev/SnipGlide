@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, QRect, QSize, Signal, QTimer, QRegularExpression,
 from PySide6.QtGui import (
     QPainter, QColor, QTextFormat, QTextCursor, QFont, QKeySequence,
     QShortcut, QAction, QIcon, QTextDocument, QCursor, QTextCharFormat,
-    QTextOption, QTextBlockFormat, QFontDatabase
+    QTextOption, QTextBlockFormat, QFontDatabase, QPixmap, QPainterPath, QPen
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QPlainTextEdit, QTextEdit, QTabWidget,
@@ -28,6 +28,62 @@ from snipglide.core.config import get_arabic_font_family
 from snipglide.database.note_repo import add_note
 from snipglide.database.chat_note_repo import add_chat_note
 from snipglide.models.note import Note
+
+
+def create_vector_icon(icon_type: str, color: str = "#60a5fa", size: int = 20, hover_color: Optional[str] = None) -> QIcon:
+    """
+    Creates a crisp, DPI-independent vector QIcon using QPainterPath.
+    Ensures beautiful rendering across all Windows display scales without missing font glyphs.
+    """
+    def _draw_pixmap(col: str) -> QPixmap:
+        pm = QPixmap(size, size)
+        pm.fill(Qt.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.Antialiasing)
+        pen = QPen(QColor(col))
+        pen.setWidthF(2.2)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+
+        path = QPainterPath()
+        if icon_type in ("left", "chevron-left", "prev"):
+            path.moveTo(size * 0.62, size * 0.22)
+            path.lineTo(size * 0.35, size * 0.5)
+            path.lineTo(size * 0.62, size * 0.78)
+            p.drawPath(path)
+        elif icon_type in ("right", "chevron-right", "next"):
+            path.moveTo(size * 0.38, size * 0.22)
+            path.lineTo(size * 0.65, size * 0.5)
+            path.lineTo(size * 0.38, size * 0.78)
+            p.drawPath(path)
+        elif icon_type in ("plus", "add"):
+            path.moveTo(size * 0.5, size * 0.22)
+            path.lineTo(size * 0.5, size * 0.78)
+            path.moveTo(size * 0.22, size * 0.5)
+            path.lineTo(size * 0.78, size * 0.5)
+            p.drawPath(path)
+        elif icon_type in ("close", "exit", "x"):
+            path.moveTo(size * 0.28, size * 0.28)
+            path.lineTo(size * 0.72, size * 0.72)
+            path.moveTo(size * 0.72, size * 0.28)
+            path.lineTo(size * 0.28, size * 0.72)
+            p.drawPath(path)
+        elif icon_type in ("search", "find"):
+            r = size * 0.26
+            cx, cy = size * 0.42, size * 0.42
+            p.drawEllipse(cx - r, cy - r, r * 2, r * 2)
+            path.moveTo(size * 0.62, size * 0.62)
+            path.lineTo(size * 0.82, size * 0.82)
+            p.drawPath(path)
+        p.end()
+        return pm
+
+    icon = QIcon()
+    icon.addPixmap(_draw_pixmap(color), QIcon.Normal)
+    if hover_color:
+        icon.addPixmap(_draw_pixmap(hover_color), QIcon.Active)
+    return icon
 
 
 class LineNumberArea(QWidget):
@@ -230,8 +286,28 @@ class NotepadEditor(QPlainTextEdit):
             "zoom_factor": self.zoom_factor,
         }
 
+    def _find_notepad_page(self) -> Optional[Any]:
+        """Find the enclosing NotepadPageQt instance."""
+        p = getattr(self, "page", None)
+        if p:
+            return p
+        p = self.parent()
+        while p:
+            if p.__class__.__name__ == "NotepadPageQt" or hasattr(p, "_is_focus_mode"):
+                return p
+            p = p.parent()
+        return None
+
     # ── Key Event Handling & Indentation ──
     def keyPressEvent(self, event):
+        # Esc or F11 -> Immediately exit Focus Mode if active
+        if event.key() in (Qt.Key_Escape, Qt.Key_F11):
+            page = self._find_notepad_page()
+            if page and getattr(page, "_is_focus_mode", False):
+                page.exit_focus_mode()
+                event.accept()
+                return
+
         # F5 -> Insert Windows Notepad Date/Time
         if event.key() == Qt.Key_F5:
             now_str = datetime.now().strftime("%I:%M %p %m/%d/%Y")
@@ -445,6 +521,146 @@ class NotepadEditor(QPlainTextEdit):
             cursor.setPosition(pos, QTextCursor.KeepAnchor if anchor != pos else QTextCursor.MoveAnchor)
         self.setTextCursor(cursor)
 
+    def contextMenuEvent(self, event):
+        page = self._find_notepad_page()
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #182229;
+                border: 1.5px solid #2a3942;
+                border-radius: 10px;
+                padding: 6px;
+                color: #f0f2f5;
+                font-size: 13px;
+            }
+            QMenu::item {
+                padding: 7px 22px;
+                border-radius: 6px;
+            }
+            QMenu::item:selected {
+                background-color: #172554;
+                color: #93c5fd;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #2a3942;
+                margin: 4px 8px;
+            }
+        """)
+
+        # 1. Focus Mode & Document Lifecycle Actions
+        if page:
+            if getattr(page, "_is_focus_mode", False):
+                act_focus = menu.addAction("↩️ إنهاء وضع التركيز واستعادة الشاشة (Esc / F11)")
+                act_focus.triggered.connect(page.exit_focus_mode)
+            else:
+                act_focus = menu.addAction("⛶ وضع التركيز بكامل الشاشة (F11)")
+                act_focus.triggered.connect(page.enter_focus_mode)
+
+            act_new = menu.addAction("📄 مستند جديد (Ctrl+N)")
+            act_new.triggered.connect(lambda: page.new_tab())
+
+            act_save = menu.addAction("💾 حفظ المستند (Ctrl+S)")
+            act_save.triggered.connect(page.save_current_tab)
+
+            act_save_as = menu.addAction("💾 حفظ باسم... (Ctrl+Shift+S)")
+            act_save_as.triggered.connect(page.save_as_current_tab)
+
+            act_open = menu.addAction("📂 فتح ملف... (Ctrl+O)")
+            act_open.triggered.connect(page.open_file)
+
+            act_close = menu.addAction("✕ إغلاق المستند الحالي (Ctrl+W)")
+            act_close.triggered.connect(lambda: page.close_tab(page.tab_widget.currentIndex()))
+
+            act_drawer = menu.addAction("☰ إظهار / إخفاء القائمة الجانبية (Ctrl+B)")
+            act_drawer.triggered.connect(page.toggle_drawer)
+
+            menu.addSeparator()
+
+        # 2. Standard Clipboard & Edit Actions
+        act_undo = menu.addAction("↩️ تراجع (Ctrl+Z)")
+        act_undo.setEnabled(self.document().isUndoAvailable())
+        act_undo.triggered.connect(self.undo)
+
+        act_redo = menu.addAction("↪️ إعادة (Ctrl+Y)")
+        act_redo.setEnabled(self.document().isRedoAvailable())
+        act_redo.triggered.connect(self.redo)
+
+        menu.addSeparator()
+
+        has_selection = self.textCursor().hasSelection()
+        act_cut = menu.addAction("✂️ قص (Ctrl+X)")
+        act_cut.setEnabled(has_selection)
+        act_cut.triggered.connect(self.cut)
+
+        act_copy = menu.addAction("📋 نسخ (Ctrl+C)")
+        act_copy.setEnabled(has_selection)
+        act_copy.triggered.connect(self.copy)
+
+        act_paste = menu.addAction("📥 لصق (Ctrl+V)")
+        act_paste.triggered.connect(self.paste)
+
+        act_del = menu.addAction("🗑️ حذف")
+        act_del.setEnabled(has_selection)
+        act_del.triggered.connect(self.textCursor().deleteChar)
+
+        act_sel_all = menu.addAction("🔘 تحديد الكل (Ctrl+A)")
+        act_sel_all.triggered.connect(self.selectAll)
+
+        menu.addSeparator()
+
+        # 3. Search & Text Formatting Actions
+        if page:
+            act_find = menu.addAction("🔍 بحث واستبدال... (Ctrl+F)")
+            act_find.triggered.connect(lambda: page.find_replace_bar.show_search(False))
+
+            act_font = menu.addAction("🔤 خيارات وتنسيق الخط...")
+            act_font.triggered.connect(page.show_font_dialog)
+
+            act_wrap = menu.addAction("🔄 تبديل التفاف الكلمات (Word Wrap)")
+            act_wrap.triggered.connect(lambda: page.act_word_wrap.trigger())
+
+            act_dir = menu.addAction("↔️ تبديل اتجاه النص (RTL / LTR)")
+            act_dir.triggered.connect(page.toggle_text_direction)
+
+            menu.addSeparator()
+
+        # 4. Helper Tools ("وكل ما يساعد")
+        act_time = menu.addAction("🕒 إدراج الوقت والتاريخ (F5)")
+        act_time.triggered.connect(lambda: self.insertPlainText(datetime.now().strftime("%I:%M %p %m/%d/%Y")))
+
+        if page:
+            act_dup = menu.addAction("📑 تكرار السطر الحالي (Ctrl+D)")
+            act_dup.triggered.connect(page.duplicate_line)
+
+            act_clean = menu.addAction("🧹 تنظيف الأسطر الفارغة المكررة")
+            act_clean.triggered.connect(page.remove_empty_lines)
+
+            # Case submenu
+            case_menu = menu.addMenu("🔠 تحويل حالة الأحرف")
+            act_upper = case_menu.addAction("🔠 أحرف كبيرة (UPPERCASE)")
+            act_upper.triggered.connect(lambda: page.transform_case("upper"))
+            act_lower = case_menu.addAction("🔡 أحرف صغيرة (lowercase)")
+            act_lower.triggered.connect(lambda: page.transform_case("lower"))
+            act_title = case_menu.addAction("🔤 تكبير أول حرف (Title Case)")
+            act_title.triggered.connect(lambda: page.transform_case("title"))
+
+            menu.addSeparator()
+
+            # 5. SnipGlide Productivity Integration
+            act_snip = menu.addAction("✂️ تحويل المحدد إلى اختصار SnipGlide")
+            act_snip.setEnabled(has_selection)
+            act_snip.triggered.connect(page.convert_selection_to_snippet)
+
+            act_chat = menu.addAction("💬 إرسال إلى شات نوت (Chat Notes)")
+            act_chat.triggered.connect(page.send_to_chat_notes)
+
+            act_notes = menu.addAction("📝 حفظ في ملاحظات SnipGlide")
+            act_notes.triggered.connect(page.save_to_snipglide_notes)
+
+        menu.exec(event.globalPos())
+
 
 QTextEditSelection = QTextEdit.ExtraSelection
 
@@ -635,6 +851,31 @@ class FindReplaceBar(QFrame):
         if checked:
             self.replace_input.setFocus()
 
+    def _apply_highlights(self):
+        """Highlight all occurrences in the document with vivid glowing contrast."""
+        if not self.editor:
+            return
+        if not self.matches:
+            self.editor.set_find_highlights([])
+            return
+
+        highlight_selections = []
+        for idx, match_cursor in enumerate(self.matches):
+            sel = QTextEditSelection()
+            sel.cursor = QTextCursor(match_cursor)
+            if idx == self.current_match_idx:
+                # Active / Current match: Radiant neon yellow with deep black text and bold weight
+                sel.format.setBackground(QColor("#facc15"))
+                sel.format.setForeground(QColor("#000000"))
+                sel.format.setFontWeight(QFont.Bold)
+            else:
+                # All other matches: Warm amber with light yellow text
+                sel.format.setBackground(QColor("#b45309"))
+                sel.format.setForeground(QColor("#fef08a"))
+            highlight_selections.append(sel)
+
+        self.editor.set_find_highlights(highlight_selections)
+
     def _on_search_query_changed(self):
         if not self.editor:
             return
@@ -643,7 +884,7 @@ class FindReplaceBar(QFrame):
             self.matches.clear()
             self.current_match_idx = -1
             self.match_count_lbl.setText("0 نتائج")
-            self.editor.set_find_highlights([])
+            self._apply_highlights()
             return
 
         doc = self.editor.document()
@@ -654,7 +895,6 @@ class FindReplaceBar(QFrame):
             flags |= QTextDocument.FindWholeWords
 
         self.matches.clear()
-        highlight_selections = []
 
         is_regex = self.btn_regex.isChecked()
         if is_regex:
@@ -666,32 +906,22 @@ class FindReplaceBar(QFrame):
                 cursor = doc.find(regex, 0)
                 while not cursor.isNull():
                     self.matches.append(QTextCursor(cursor))
-                    sel = QTextEditSelection()
-                    sel.cursor = QTextCursor(cursor)
-                    sel.format.setBackground(QColor("#451a03"))
-                    sel.format.setForeground(QColor("#fbbf24"))
-                    highlight_selections.append(sel)
                     cursor = doc.find(regex, cursor.position())
             except Exception:
                 self.match_count_lbl.setText("Regex خطأ")
+                self._apply_highlights()
                 return
         else:
             cursor = doc.find(query, 0, flags)
             while not cursor.isNull():
                 self.matches.append(QTextCursor(cursor))
-                sel = QTextEditSelection()
-                sel.cursor = QTextCursor(cursor)
-                sel.format.setBackground(QColor("#451a03"))
-                sel.format.setForeground(QColor("#fbbf24"))
-                highlight_selections.append(sel)
                 cursor = doc.find(query, cursor.position(), flags)
-
-        self.editor.set_find_highlights(highlight_selections)
 
         total = len(self.matches)
         if total == 0:
             self.match_count_lbl.setText("لم يتم العثور")
             self.current_match_idx = -1
+            self._apply_highlights()
         else:
             # Find closest match relative to current cursor
             current_pos = self.editor.textCursor().position()
@@ -700,6 +930,7 @@ class FindReplaceBar(QFrame):
                 if m.position() >= current_pos:
                     self.current_match_idx = i
                     break
+            self._apply_highlights()
             self.match_count_lbl.setText(f"{self.current_match_idx + 1} من {total}")
 
     def find_next(self):
@@ -709,6 +940,7 @@ class FindReplaceBar(QFrame):
         cursor = self.matches[self.current_match_idx]
         self.editor.setTextCursor(cursor)
         self.editor.centerCursor()
+        self._apply_highlights()
         self.match_count_lbl.setText(f"{self.current_match_idx + 1} من {len(self.matches)}")
 
     def find_prev(self):
@@ -718,6 +950,7 @@ class FindReplaceBar(QFrame):
         cursor = self.matches[self.current_match_idx]
         self.editor.setTextCursor(cursor)
         self.editor.centerCursor()
+        self._apply_highlights()
         self.match_count_lbl.setText(f"{self.current_match_idx + 1} من {len(self.matches)}")
 
     def replace_current(self):
@@ -860,6 +1093,29 @@ class NotepadPageQt(QWidget):
         top_bar.setContentsMargins(14, 10, 14, 10)
         top_bar.setSpacing(12)
 
+        # Drawer toggle button (☰ القائمة الجانبية)
+        self.btn_drawer = QPushButton("☰ القائمة")
+        self.btn_drawer.setToolTip("إظهار / إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+        self.btn_drawer.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_drawer.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #60a5fa;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 7px 14px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #172554;
+                color: #93c5fd;
+                border-color: #3b82f6;
+            }
+        """)
+        self.btn_drawer.clicked.connect(self.toggle_drawer)
+        top_bar.addWidget(self.btn_drawer)
+
         icon_lbl = QLabel("🗒️")
         icon_lbl.setStyleSheet("font-size: 24px; border: none; background: transparent;")
         top_bar.addWidget(icon_lbl)
@@ -874,6 +1130,21 @@ class NotepadPageQt(QWidget):
         sub_title.setStyleSheet("font-size: 12px; color: #94a3b8; border: none; background: transparent;")
         title_layout.addWidget(sub_title)
         top_bar.addLayout(title_layout)
+
+        # Prominent Note Count Badge
+        self.lbl_notes_badge = QLabel("📝 0 ملاحظة")
+        self.lbl_notes_badge.setStyleSheet("""
+            QLabel {
+                background-color: #182229;
+                color: #25D366;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 6px 14px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+        """)
+        top_bar.addWidget(self.lbl_notes_badge)
 
         top_bar.addStretch()
 
@@ -1092,30 +1363,89 @@ class NotepadPageQt(QWidget):
         self.tab_bar.customContextMenuRequested.connect(self._on_tab_context_menu)
         self.tab_bar.tabBarDoubleClicked.connect(self._on_tab_double_clicked)
 
-        # Corner Widget (Transparent container for New Tab button)
-        corner_widget = QWidget(self)
-        corner_widget.setStyleSheet("background: transparent; border: none;")
-        corner_layout = QHBoxLayout(corner_widget)
-        corner_layout.setContentsMargins(4, 0, 4, 0)
-        corner_layout.setSpacing(4)
+        # ── Left Corner Widget (Left Navigation Button flanking notes on the left) ──
+        left_corner_widget = QWidget(self)
+        left_corner_widget.setStyleSheet("background: transparent; border: none;")
+        left_corner_layout = QHBoxLayout(left_corner_widget)
+        left_corner_layout.setContentsMargins(4, 0, 4, 0)
+        left_corner_layout.setSpacing(4)
 
-        self.add_tab_btn = QToolButton(corner_widget)
-        self.add_tab_btn.setText(" ➕ ")
-        self.add_tab_btn.setToolTip("علامة تبويب جديدة (Ctrl+N أو Ctrl+T)")
+        # Left Tab Button (◀ - الانتقال إلى اليسار مع أيقونة فيكتور عالية الدقة)
+        self.btn_left_tab = QToolButton(left_corner_widget)
+        self.btn_left_tab.setIcon(create_vector_icon("left", "#60a5fa", 20, "#93c5fd"))
+        self.btn_left_tab.setIconSize(QSize(20, 20))
+        self.btn_left_tab.setToolTip("الانتقال إلى الملاحظة جهة اليسار (Alt+Left أو Ctrl+PageUp)")
+        self.btn_left_tab.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_left_tab.setStyleSheet("""
+            QToolButton {
+                background-color: #182229;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 6px 10px;
+                margin: 2px;
+            }
+            QToolButton:hover {
+                background-color: #2563eb;
+                border-color: #3b82f6;
+            }
+            QToolButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        self.btn_left_tab.clicked.connect(self.navigate_left)
+        left_corner_layout.addWidget(self.btn_left_tab)
+        self.tab_widget.setCornerWidget(left_corner_widget, Qt.TopLeftCorner)
+        self.btn_prev_tab = self.btn_left_tab  # Backwards compatibility
+
+        # ── Right Corner Widget (Right Navigation Button + New Tab flanking notes on the right) ──
+        right_corner_widget = QWidget(self)
+        right_corner_widget.setStyleSheet("background: transparent; border: none;")
+        right_corner_layout = QHBoxLayout(right_corner_widget)
+        right_corner_layout.setContentsMargins(4, 0, 4, 0)
+        right_corner_layout.setSpacing(4)
+
+        # Right Tab Button (▶ - الانتقال إلى اليمين مع أيقونة فيكتور عالية الدقة)
+        self.btn_right_tab = QToolButton(right_corner_widget)
+        self.btn_right_tab.setIcon(create_vector_icon("right", "#60a5fa", 20, "#93c5fd"))
+        self.btn_right_tab.setIconSize(QSize(20, 20))
+        self.btn_right_tab.setToolTip("الانتقال إلى الملاحظة جهة اليمين (Alt+Right أو Ctrl+PageDown)")
+        self.btn_right_tab.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_right_tab.setStyleSheet("""
+            QToolButton {
+                background-color: #182229;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 6px 10px;
+                margin: 2px;
+            }
+            QToolButton:hover {
+                background-color: #2563eb;
+                border-color: #3b82f6;
+            }
+            QToolButton:pressed {
+                background-color: #1d4ed8;
+            }
+        """)
+        self.btn_right_tab.clicked.connect(self.navigate_right)
+        right_corner_layout.addWidget(self.btn_right_tab)
+        self.btn_next_tab = self.btn_right_tab  # Backwards compatibility
+
+        # New Tab Button (➕ مع أيقونة فيكتور واضحة)
+        self.add_tab_btn = QToolButton(right_corner_widget)
+        self.add_tab_btn.setIcon(create_vector_icon("plus", "#25D366", 20, "#ffffff"))
+        self.add_tab_btn.setIconSize(QSize(20, 20))
+        self.add_tab_btn.setToolTip("إضافة ملاحظة / مستند جديد (Ctrl+N أو Ctrl+T)")
+        self.add_tab_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.add_tab_btn.setStyleSheet("""
             QToolButton {
                 background-color: #182229;
-                color: #25D366;
-                font-weight: bold;
-                font-size: 15px;
                 border: 1.5px solid #2a3942;
                 border-radius: 8px;
-                padding: 6px 12px;
+                padding: 6px 10px;
                 margin: 2px;
             }
             QToolButton:hover {
                 background-color: #25D366;
-                color: #0b141a;
                 border-color: #25D366;
             }
             QToolButton:pressed {
@@ -1123,8 +1453,14 @@ class NotepadPageQt(QWidget):
             }
         """)
         self.add_tab_btn.clicked.connect(lambda: self.new_tab())
-        corner_layout.addWidget(self.add_tab_btn)
-        self.tab_widget.setCornerWidget(corner_widget, Qt.TopRightCorner)
+        right_corner_layout.addWidget(self.add_tab_btn)
+        self.tab_widget.setCornerWidget(right_corner_widget, Qt.TopRightCorner)
+
+        # Tab navigation keyboard shortcuts (Direct arrow & page navigation)
+        self.sc_prev_pg = QShortcut(QKeySequence("Ctrl+PageUp"), self, activated=self.prev_tab)
+        self.sc_next_pg = QShortcut(QKeySequence("Ctrl+PageDown"), self, activated=self.next_tab)
+        self.sc_prev_alt = QShortcut(QKeySequence("Alt+Left"), self, activated=self.navigate_left)
+        self.sc_next_alt = QShortcut(QKeySequence("Alt+Right"), self, activated=self.navigate_right)
 
         self.tab_widget.setStyleSheet("""
             QTabWidget {
@@ -1235,6 +1571,21 @@ class NotepadPageQt(QWidget):
         status_layout = QHBoxLayout(self.status_bar_widget)
         status_layout.setContentsMargins(8, 4, 8, 4)
         status_layout.setSpacing(10)
+
+        # Global Notes Count in Status Bar
+        self.lbl_notes_total_status = QLabel("📑 0 ملاحظة")
+        self.lbl_notes_total_status.setStyleSheet("""
+            QLabel {
+                background-color: #182229;
+                color: #38bdf8;
+                border: 1px solid #0284c7;
+                border-radius: 7px;
+                padding: 5px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }
+        """)
+        status_layout.addWidget(self.lbl_notes_total_status)
 
         self.lbl_pos = QLabel("📍 السطر 1، العمود 1")
         status_layout.addWidget(self.lbl_pos)
@@ -1504,6 +1855,19 @@ class NotepadPageQt(QWidget):
         self.act_focus_mode.setShortcut(QKeySequence("F11"))
         self.act_focus_mode.triggered.connect(self.toggle_focus_mode)
 
+        self.act_drawer = view_menu.addAction("📑 إظهار / إخفاء القائمة الجانبية (Drawer)")
+        self.act_drawer.setShortcut(QKeySequence("Ctrl+B"))
+        self.act_drawer.triggered.connect(self.toggle_drawer)
+
+        view_menu.addSeparator()
+        self.act_prev_tab = view_menu.addAction("◀ المستند السابق (Previous Note)")
+        self.act_prev_tab.setShortcut(QKeySequence("Ctrl+PageUp"))
+        self.act_prev_tab.triggered.connect(self.prev_tab)
+
+        self.act_next_tab = view_menu.addAction("▶ المستند التالي (Next Note)")
+        self.act_next_tab.setShortcut(QKeySequence("Ctrl+PageDown"))
+        self.act_next_tab.triggered.connect(self.next_tab)
+
         # 5. SnipGlide Tools Menu
         snip_menu = self.menu_bar.addMenu("⚡ سنب جلايد (SnipGlide)")
         snip_menu.addAction("✂️ تحويل المحدد إلى اختصار SnipGlide", self.convert_selection_to_snippet)
@@ -1513,7 +1877,7 @@ class NotepadPageQt(QWidget):
         snip_menu.addAction("📊 إحصائيات تفصيلية للنص", self.show_text_stats_dialog)
 
     def _create_toolbar_actions(self):
-        # 1. Documents: New, Open, Save
+        # 1. Documents: New, Open, Save, Previous, Next
         btn_new = QToolButton()
         btn_new.setText("📄 جديد")
         btn_new.setToolTip("علامة تبويب جديدة (Ctrl+N)")
@@ -1531,6 +1895,19 @@ class NotepadPageQt(QWidget):
         btn_save.setToolTip("حفظ الملف الحالي (Ctrl+S)")
         btn_save.clicked.connect(self.save_current_tab)
         self.toolbar.addWidget(btn_save)
+
+        # Navigation arrows
+        btn_prev = QToolButton()
+        btn_prev.setText("◀")
+        btn_prev.setToolTip("الملاحظة جهة اليسار (Alt+Left أو Ctrl+PageUp)")
+        btn_prev.clicked.connect(self.navigate_left)
+        self.toolbar.addWidget(btn_prev)
+
+        btn_next = QToolButton()
+        btn_next.setText("▶")
+        btn_next.setToolTip("الملاحظة جهة اليمين (Alt+Right أو Ctrl+PageDown)")
+        btn_next.clicked.connect(self.navigate_right)
+        self.toolbar.addWidget(btn_next)
 
         self.toolbar.addSeparator()
 
@@ -1733,6 +2110,7 @@ class NotepadPageQt(QWidget):
             parent=self.tab_widget
         )
         editor = tab.editor
+        editor.page = self
 
         # Apply current settings & font
         editor.set_font_properties(self.active_font)
@@ -1777,6 +2155,7 @@ class NotepadPageQt(QWidget):
             self.find_replace_bar.set_editor(editor)
             self._update_status_bar()
             editor.setFocus()
+        self._update_notes_count_display()
         self.session_save_timer.start()
 
     def _on_editor_modified(self, tab: NotepadTab):
@@ -2006,6 +2385,28 @@ class NotepadPageQt(QWidget):
         btn_add_fld.clicked.connect(self.create_new_folder)
         self.folder_bar_layout.addWidget(btn_add_fld)
 
+        # Folder Management Dialog Button
+        btn_manage_fld = QPushButton("⚙️ إدارة المجلدات")
+        btn_manage_fld.setToolTip("إعادة تسمية، حذف، أو تنظيم المجلدات")
+        btn_manage_fld.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #60a5fa;
+                border: 1.5px solid #2a3942;
+                border-radius: 7px;
+                padding: 5px 12px;
+                font-weight: bold;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #172554;
+                color: #93c5fd;
+                border-color: #3b82f6;
+            }
+        """)
+        btn_manage_fld.clicked.connect(self.show_folder_management_dialog)
+        self.folder_bar_layout.addWidget(btn_manage_fld)
+
         self._refresh_folder_bar()
 
     def _compute_counts(self) -> Dict[str, int]:
@@ -2128,18 +2529,53 @@ class NotepadPageQt(QWidget):
             )
             self.folder_pills_layout.addWidget(btn_f)
 
+        self._update_notes_count_display()
+
     def _on_folder_pill_context_menu(self, pos: QPoint, folder_name: str):
         sender = self.sender()
         if not sender:
             return
         menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #182229;
+                border: 1.5px solid #2a3942;
+                border-radius: 10px;
+                padding: 6px;
+                color: #f0f2f5;
+                font-size: 13px;
+            }
+            QMenu::item {
+                padding: 7px 22px;
+                border-radius: 6px;
+            }
+            QMenu::item:selected {
+                background-color: #172554;
+                color: #93c5fd;
+            }
+            QMenu::separator {
+                height: 1px;
+                background-color: #2a3942;
+                margin: 4px 8px;
+            }
+        """)
+
+        act_open_fld = menu.addAction(f"📂 عرض مستندات مجلد '{folder_name}'")
+        act_new_in_fld = menu.addAction(f"➕ مستند جديد في '{folder_name}'")
+        menu.addSeparator()
         act_rename = menu.addAction("✏️ إعادة تسمية المجلد...")
-        act_delete = menu.addAction("🗑️ حذف المجلد...")
+        act_delete = menu.addAction("🗑️ حذف المجلد (ترحيل الملفات إلى 'العامة')...")
+
         if folder_name == "العامة":
+            act_rename.setEnabled(False)
             act_delete.setEnabled(False)
 
         action = menu.exec(sender.mapToGlobal(pos))
-        if action == act_rename:
+        if action == act_open_fld:
+            self.set_folder_filter("folder", folder_name)
+        elif action == act_new_in_fld:
+            self.new_tab(folder=folder_name)
+        elif action == act_rename:
             self.rename_folder(folder_name)
         elif action == act_delete:
             self.delete_folder(folder_name)
@@ -2258,6 +2694,239 @@ class NotepadPageQt(QWidget):
         curr_idx = self.tab_widget.currentIndex()
         if curr_idx not in visible_indices and visible_indices:
             self.tab_widget.setCurrentIndex(visible_indices[0])
+
+    # ── Tab Navigation (Arrow Buttons & Shortcuts with Active Editor Focus) ──
+    def _activate_and_focus_tab(self, idx: int):
+        """Set active tab, scroll it into view, and immediately set focus on its editor."""
+        self.tab_widget.setCurrentIndex(idx)
+        tab = self.tab_widget.widget(idx)
+        if isinstance(tab, NotepadTab):
+            tab.editor.setFocus()
+        if hasattr(self, "tab_bar"):
+            try:
+                # Ensure the tab is visible in scroll area
+                self.tab_bar.update()
+            except Exception:
+                pass
+        self._update_notes_count_display()
+
+    def prev_tab(self):
+        """Switch to the previous visible tab/note and focus editor."""
+        count = self.tab_widget.count()
+        if count <= 1:
+            ed = self.get_current_editor()
+            if ed:
+                ed.setFocus()
+            return
+        curr = self.tab_widget.currentIndex()
+        for idx in range(curr - 1, -1, -1):
+            if self.tab_widget.isTabVisible(idx):
+                self._activate_and_focus_tab(idx)
+                return
+        # Wrap around from end
+        for idx in range(count - 1, curr, -1):
+            if self.tab_widget.isTabVisible(idx):
+                self._activate_and_focus_tab(idx)
+                return
+
+    def next_tab(self):
+        """Switch to the next visible tab/note and focus editor."""
+        count = self.tab_widget.count()
+        if count <= 1:
+            ed = self.get_current_editor()
+            if ed:
+                ed.setFocus()
+            return
+        curr = self.tab_widget.currentIndex()
+        for idx in range(curr + 1, count):
+            if self.tab_widget.isTabVisible(idx):
+                self._activate_and_focus_tab(idx)
+                return
+        # Wrap around from start
+        for idx in range(0, curr):
+            if self.tab_widget.isTabVisible(idx):
+                self._activate_and_focus_tab(idx)
+                return
+
+    def navigate_right(self):
+        """Navigate to the note tab visually to the right and set focus."""
+        is_rtl = (self.layoutDirection() == Qt.RightToLeft or self.tab_widget.tabBar().layoutDirection() == Qt.RightToLeft)
+        if is_rtl:
+            self.prev_tab()
+        else:
+            self.next_tab()
+
+    def navigate_left(self):
+        """Navigate to the note tab visually to the left and set focus."""
+        is_rtl = (self.layoutDirection() == Qt.RightToLeft or self.tab_widget.tabBar().layoutDirection() == Qt.RightToLeft)
+        if is_rtl:
+            self.next_tab()
+        else:
+            self.prev_tab()
+
+    def _update_notes_count_display(self):
+        """Update live note count badges in the header card and status bar."""
+        if not hasattr(self, "tab_widget"):
+            return
+        counts = self._compute_counts()
+        total = counts.get("all", 0)
+        archived = counts.get("archive", 0)
+        fav = counts.get("favorites", 0)
+
+        active_cnt = 0
+        if self.active_filter == "all":
+            active_cnt = total
+            filter_text = "كافة الملفات"
+        elif self.active_filter == "favorites":
+            active_cnt = fav
+            filter_text = "المفضلة"
+        elif self.active_filter == "archive":
+            active_cnt = archived
+            filter_text = "الأرشيف"
+        elif self.active_filter == "folder":
+            active_cnt = counts.get(self.active_folder, 0)
+            filter_text = self.active_folder
+        else:
+            active_cnt = total
+            filter_text = "كافة الملفات"
+
+        curr_num = self.tab_widget.currentIndex() + 1 if self.tab_widget.count() > 0 else 0
+
+        if hasattr(self, "lbl_notes_badge"):
+            self.lbl_notes_badge.setText(f"📝 إجمالي الملاحظات: {total} | المعروضة ({filter_text}): {active_cnt}")
+            self.lbl_notes_badge.setToolTip(f"إجمالي الملاحظات غير المؤرشفة: {total}\nالمعروضة حالياً ({filter_text}): {active_cnt}\nالمفضلة: {fav} ⭐\nالأرشيف: {archived} 📦\nرقم الملاحظة الحالية: {curr_num} من {total}")
+
+        if hasattr(self, "lbl_notes_total_status"):
+            self.lbl_notes_total_status.setText(f"📑 {total} ملاحظة ({active_cnt} نشطة | ⭐ {fav} | 📦 {archived})")
+            self.lbl_notes_total_status.setToolTip(f"إجمالي المستندات: {total}\nالمستندات المعروضة في العرض الحالي: {active_cnt}\nالمفضلة: {fav} ⭐\nالأرشيف: {archived} 📦")
+
+    # ── Sidebar Drawer Toggle ──
+    def toggle_drawer(self):
+        """Toggle sidebar visibility (drawer show/hide) via main window."""
+        main_win = self.window()
+        if hasattr(main_win, "toggle_sidebar"):
+            main_win.toggle_sidebar()
+
+    def on_sidebar_toggled(self, is_visible: bool):
+        """Update drawer toggle button tooltip when sidebar state changes."""
+        if hasattr(self, "btn_drawer"):
+            if is_visible:
+                self.btn_drawer.setToolTip("إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+            else:
+                self.btn_drawer.setToolTip("إظهار القائمة الجانبية (Drawer) - Ctrl+B")
+
+    # ── Folder Management Dialog ──
+    def show_folder_management_dialog(self):
+        """Interactive dialog to manage, rename, and delete folders."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("إدارة المجلدات (Folder Management)")
+        dialog.setFixedWidth(440)
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #111b21;
+                color: #f0f2f5;
+                font-size: 13px;
+            }
+            QLabel {
+                color: #cbd5e1;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QComboBox {
+                background-color: #182229;
+                color: #f0f2f5;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 7px 12px;
+                font-size: 13px;
+            }
+            QPushButton {
+                background-color: #182229;
+                color: #f0f2f5;
+                border: 1.5px solid #2a3942;
+                border-radius: 8px;
+                padding: 8px 16px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #202c33;
+                border-color: #3b4a54;
+            }
+        """)
+
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(14)
+
+        header_lbl = QLabel("📁 اختر المجلد لإدارته أو حذفه أو إعادة تسميته:")
+        layout.addWidget(header_lbl)
+
+        combo = QComboBox(dialog)
+        counts = self._compute_counts()
+        for f in self.folders:
+            c = counts.get(f, 0)
+            combo.addItem(f"📂 {f} ({c} مستند)", f)
+        layout.addWidget(combo)
+
+        info_lbl = QLabel("")
+        info_lbl.setWordWrap(True)
+        info_lbl.setStyleSheet("color: #94a3b8; font-size: 12px;")
+        layout.addWidget(info_lbl)
+
+        btn_box = QHBoxLayout()
+        btn_box.setSpacing(10)
+
+        btn_rename = QPushButton("✏️ إعادة تسمية")
+        btn_rename.setStyleSheet("background-color: #172554; color: #93c5fd; border: 1.5px solid #3b82f6;")
+        btn_delete = QPushButton("🗑️ حذف المجلد")
+        btn_delete.setStyleSheet("background-color: #450a0a; color: #fca5a5; border: 1.5px solid #dc2626;")
+        btn_new = QPushButton("➕ مجلد جديد")
+        btn_new.setStyleSheet("background-color: #064e3b; color: #6ee7b7; border: 1.5px solid #10b981;")
+
+        btn_box.addWidget(btn_rename)
+        btn_box.addWidget(btn_delete)
+        btn_box.addWidget(btn_new)
+        layout.addLayout(btn_box)
+
+        def update_info():
+            selected_fld = combo.currentData()
+            c = counts.get(selected_fld, 0)
+            if selected_fld == "العامة":
+                info_lbl.setText(f"ℹ️ مجلد 'العامة' هو المجلد الافتراضي للنظام ويحتوي على {c} مستند. (لا يمكن حذفه)")
+                btn_delete.setEnabled(False)
+                btn_rename.setEnabled(False)
+            else:
+                info_lbl.setText(f"ℹ️ يحتوي على {c} مستند. عند الحذف سيتم نقل كافة مستنداته تلقائياً إلى 'العامة'.")
+                btn_delete.setEnabled(True)
+                btn_rename.setEnabled(True)
+
+        combo.currentIndexChanged.connect(lambda: update_info())
+        update_info()
+
+        def do_rename():
+            fld = combo.currentData()
+            dialog.accept()
+            self.rename_folder(fld)
+
+        def do_delete():
+            fld = combo.currentData()
+            dialog.accept()
+            self.delete_folder(fld)
+
+        def do_new():
+            dialog.accept()
+            self.create_new_folder()
+
+        btn_rename.clicked.connect(do_rename)
+        btn_delete.clicked.connect(do_delete)
+        btn_new.clicked.connect(do_new)
+
+        close_btn = QPushButton("إغلاق")
+        close_btn.clicked.connect(dialog.reject)
+        layout.addWidget(close_btn)
+
+        dialog.exec()
 
     # ── Fullscreen Focus Mode ──
     def toggle_focus_mode(self):
@@ -2866,6 +3535,7 @@ class NotepadPageQt(QWidget):
         self.lbl_encoding.setText(f"🌐 {stats['encoding']}")
         is_rtl = editor.layoutDirection() == Qt.RightToLeft
         self.lbl_direction.setText("🔤 RTL عربي" if is_rtl else "🔤 LTR إنجليزي")
+        self._update_notes_count_display()
 
     # ── SnipGlide Integrations ──
     def convert_selection_to_snippet(self):

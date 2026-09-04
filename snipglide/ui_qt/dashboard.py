@@ -23,6 +23,29 @@ class DashboardQt(QWidget):
 
         # ── Header Title & Refresh ──
         header_row = QHBoxLayout()
+
+        btn_drawer = QPushButton("☰ القائمة")
+        btn_drawer.setToolTip("إظهار / إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+        btn_drawer.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_drawer.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #60a5fa;
+                border: 1.5px solid #2a3942;
+                border-radius: 9px;
+                padding: 7px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #172554;
+                color: #93c5fd;
+                border-color: #3b82f6;
+            }
+        """)
+        btn_drawer.clicked.connect(lambda: self.window().toggle_sidebar() if hasattr(self.window(), "toggle_sidebar") else None)
+        header_row.addWidget(btn_drawer)
+
         title_box = QVBoxLayout()
         title_box.setSpacing(4)
         title = QLabel("📊 لوحة الأداء والإنتاجية (Analytics & Overview)")

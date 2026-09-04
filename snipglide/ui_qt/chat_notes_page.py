@@ -322,6 +322,28 @@ class ChatNotesPageQt(QWidget):
         tier1_row = QHBoxLayout()
         tier1_row.setSpacing(12)
 
+        btn_drawer = QPushButton("☰ القائمة")
+        btn_drawer.setToolTip("إظهار / إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+        btn_drawer.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_drawer.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #60a5fa;
+                border: 1.5px solid #2a3942;
+                border-radius: 9px;
+                padding: 7px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #172554;
+                color: #93c5fd;
+                border-color: #3b82f6;
+            }
+        """)
+        btn_drawer.clicked.connect(lambda: self.window().toggle_sidebar() if hasattr(self.window(), "toggle_sidebar") else None)
+        tier1_row.addWidget(btn_drawer)
+
         avatar_lbl = QLabel("💬")
         avatar_lbl.setStyleSheet("font-size: 24px; background-color: #25D366; color: white; border-radius: 20px; padding: 4px 10px;")
         tier1_row.addWidget(avatar_lbl)

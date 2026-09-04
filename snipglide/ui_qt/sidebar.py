@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
 
 class SidebarQt(QFrame):
     page_selected = Signal(str)
+    collapse_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -19,17 +20,50 @@ class SidebarQt(QFrame):
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(15, 25, 15, 20)
+        layout.setContentsMargins(15, 20, 15, 20)
         layout.setSpacing(6)
 
-        # App Brand Header
+        # App Brand Header with Drawer Collapse Button
+        header_box = QHBoxLayout()
+        header_box.setContentsMargins(0, 0, 0, 0)
+
+        brand_col = QVBoxLayout()
+        brand_col.setSpacing(2)
         brand_lbl = QLabel("SnipGlide")
-        brand_lbl.setStyleSheet("font-size: 26px; font-weight: bold; color: white;")
-        layout.addWidget(brand_lbl)
+        brand_lbl.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
+        brand_col.addWidget(brand_lbl)
 
         sub_lbl = QLabel("Text Expander Pro")
-        sub_lbl.setStyleSheet("font-size: 13px; color: #8696a0; margin-bottom: 20px;")
-        layout.addWidget(sub_lbl)
+        sub_lbl.setStyleSheet("font-size: 12px; color: #8696a0;")
+        brand_col.addWidget(sub_lbl)
+        header_box.addLayout(brand_col)
+
+        header_box.addStretch()
+
+        self.btn_collapse = QPushButton("◀")
+        self.btn_collapse.setToolTip("إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+        self.btn_collapse.setFixedSize(30, 30)
+        self.btn_collapse.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_collapse.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #8696a0;
+                border: 1px solid #2a3942;
+                border-radius: 8px;
+                font-size: 13px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #202c33;
+                color: #60a5fa;
+                border-color: #3b82f6;
+            }
+        """)
+        self.btn_collapse.clicked.connect(self.collapse_requested.emit)
+        header_box.addWidget(self.btn_collapse)
+        layout.addLayout(header_box)
+
+        layout.addSpacing(14)
 
         self.btn_group = QButtonGroup(self)
         self.btn_group.setExclusive(True)

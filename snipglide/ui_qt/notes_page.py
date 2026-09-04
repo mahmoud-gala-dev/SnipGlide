@@ -174,6 +174,28 @@ class NotesPageQt(QWidget):
         t1_layout = QHBoxLayout()
         t1_layout.setSpacing(12)
 
+        btn_drawer = QPushButton("☰ القائمة")
+        btn_drawer.setToolTip("إظهار / إخفاء القائمة الجانبية (Drawer) - Ctrl+B")
+        btn_drawer.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_drawer.setStyleSheet("""
+            QPushButton {
+                background-color: #182229;
+                color: #60a5fa;
+                border: 1.5px solid #2a3942;
+                border-radius: 9px;
+                padding: 7px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #172554;
+                color: #93c5fd;
+                border-color: #3b82f6;
+            }
+        """)
+        btn_drawer.clicked.connect(lambda: self.window().toggle_sidebar() if hasattr(self.window(), "toggle_sidebar") else None)
+        t1_layout.addWidget(btn_drawer)
+
         icon_lbl = QLabel("📝")
         icon_lbl.setStyleSheet("font-size: 24px; background-color: #f59e0b; color: white; border-radius: 20px; padding: 4px 10px;")
         t1_layout.addWidget(icon_lbl)
