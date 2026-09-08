@@ -24,15 +24,32 @@ DEFAULT_NOTEPAD_SETTINGS = {
     "active_filter": "all",
 }
 
+def sanitize_folders_list(folders: Any) -> List[str]:
+    """Clean and deduplicate folders list while preserving order."""
+    if not isinstance(folders, list):
+        return ["العامة", "العمل", "شخصي"]
+    seen = set()
+    cleaned = []
+    for f in folders:
+        if isinstance(f, str):
+            f_clean = f.strip()
+            if f_clean and f_clean not in seen and f_clean not in ["كافة الملفات", "المفضلة", "الأرشيف"]:
+                seen.add(f_clean)
+                cleaned.append(f_clean)
+    if not cleaned:
+        cleaned = ["العامة", "العمل", "شخصي"]
+    elif "العامة" not in cleaned:
+        cleaned.insert(0, "العامة")
+    return cleaned
+
 def load_notepad_session() -> Dict[str, Any]:
     """Load the saved tabs, drafts, and preferences of Notepad."""
     if NOTEPAD_SESSION_FILE.exists():
         try:
             data = json.loads(NOTEPAD_SESSION_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                # Ensure folders list exists
-                if "folders" not in data or not isinstance(data["folders"], list):
-                    data["folders"] = ["العامة", "العمل", "شخصي"]
+                # Ensure folders list exists and is sanitized/deduplicated
+                data["folders"] = sanitize_folders_list(data.get("folders"))
                 return data
         except Exception:
             pass
@@ -48,6 +65,8 @@ def load_notepad_session() -> Dict[str, Any]:
 def save_notepad_session(data: Dict[str, Any]) -> bool:
     """Save the current tabs, drafts, and settings to disk."""
     try:
+        if isinstance(data, dict) and "folders" in data:
+            data["folders"] = sanitize_folders_list(data["folders"])
         NOTEPAD_SESSION_FILE.write_text(
             json.dumps(data, ensure_ascii=False, indent=2),
             encoding="utf-8"

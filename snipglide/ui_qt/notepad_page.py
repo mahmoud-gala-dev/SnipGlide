@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog
 
 from snipglide.services.notepad_session import (
-    load_notepad_session, save_notepad_session,
+    load_notepad_session, save_notepad_session, sanitize_folders_list,
     get_recent_files, add_recent_file, clear_recent_files,
     DEFAULT_NOTEPAD_SETTINGS
 )
@@ -521,143 +521,355 @@ class NotepadEditor(QPlainTextEdit):
             cursor.setPosition(pos, QTextCursor.KeepAnchor if anchor != pos else QTextCursor.MoveAnchor)
         self.setTextCursor(cursor)
 
+    def select_current_line(self):
+        """Select the full line under the cursor."""
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        self.setTextCursor(cursor)
+
+    def duplicate_current_line(self):
+        """Duplicate the current line or selection."""
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        line_text = cursor.selectedText()
+        cursor.movePosition(QTextCursor.EndOfBlock)
+        cursor.insertText("\n" + line_text)
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم تكرار السطر! 📑", False)
+
+    def delete_current_line(self):
+        """Delete the current line entirely."""
+        cursor = self.textCursor()
+        cursor.movePosition(QTextCursor.StartOfBlock)
+        cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+        if not cursor.atEnd():
+            cursor.movePosition(QTextCursor.NextCharacter, QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم حذف السطر! 🗑️", False)
+
+    def transform_case(self, mode: str):
+        """Transform text case for selection or entire document."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            start = cursor.selectionStart()
+            txt = cursor.selectedText().replace('\u2029', '\n')
+            if mode == "upper":
+                txt = txt.upper()
+            elif mode == "lower":
+                txt = txt.lower()
+            elif mode == "title":
+                txt = txt.title()
+            elif mode in ("toggle", "swap"):
+                txt = txt.swapcase()
+            cursor.insertText(txt)
+            cursor.setPosition(start)
+            cursor.setPosition(start + len(txt), QTextCursor.KeepAnchor)
+            self.setTextCursor(cursor)
+        else:
+            txt = self.toPlainText()
+            if mode == "upper":
+                txt = txt.upper()
+            elif mode == "lower":
+                txt = txt.lower()
+            elif mode == "title":
+                txt = txt.title()
+            elif mode in ("toggle", "swap"):
+                txt = txt.swapcase()
+            self.setPlainText(txt)
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم تحويل حالة الأحرف! 🔠", False)
+
+    def sort_lines(self, ascending: bool = True):
+        """Sort lines alphabetically ascending or descending."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            txt = cursor.selectedText()
+            lines = txt.split("\u2029")
+            lines.sort(reverse=not ascending)
+            cursor.insertText("\n".join(lines))
+        else:
+            txt = self.toPlainText()
+            lines = txt.splitlines()
+            lines.sort(reverse=not ascending)
+            self.setPlainText("\n".join(lines))
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم فرز وترتيب الأسطر بنجاح! 🔀", False)
+
+    def remove_empty_lines(self):
+        """Remove blank/empty lines."""
+        txt = self.toPlainText()
+        filtered = "\n".join([l for l in txt.splitlines() if l.strip()])
+        self.setPlainText(filtered)
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم حذف كافة الأسطر الفارغة! 🧹", False)
+
+    def trim_whitespace(self):
+        """Remove leading and trailing spaces from each line."""
+        txt = self.toPlainText()
+        trimmed = "\n".join([l.strip() for l in txt.splitlines()])
+        self.setPlainText(trimmed)
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تمت إزالة الفراغات الزائدة بنجاح! ✂️", False)
+
+    def number_lines(self):
+        """Number all lines in the document sequentially."""
+        txt = self.toPlainText()
+        lines = txt.splitlines()
+        numbered = "\n".join([f"{i+1}. {l}" for i, l in enumerate(lines)])
+        self.setPlainText(numbered)
+        page = self._find_notepad_page()
+        if page and hasattr(page, "_toast"):
+            page._toast("تم ترقيم كافة الأسطر! 🔢", False)
+
+    def insert_time_date(self):
+        """Insert current date and time formatted string."""
+        now_str = datetime.now().strftime("%I:%M %p %m/%d/%Y")
+        self.insertPlainText(now_str)
+
     def contextMenuEvent(self, event):
         page = self._find_notepad_page()
 
+        # If right clicked outside existing selection, move cursor to click position
+        click_cursor = self.cursorForPosition(event.pos())
+        curr_cursor = self.textCursor()
+        if not (curr_cursor.hasSelection() and curr_cursor.selectionStart() <= click_cursor.position() <= curr_cursor.selectionEnd()):
+            self.setTextCursor(click_cursor)
+
         menu = QMenu(self)
+        menu.setLayoutDirection(Qt.RightToLeft)
         menu.setStyleSheet("""
             QMenu {
-                background-color: #182229;
-                border: 1.5px solid #2a3942;
-                border-radius: 10px;
-                padding: 6px;
-                color: #f0f2f5;
-                font-size: 13px;
+                background-color: #111b21;
+                border: 1px solid #2a3942;
+                border-radius: 8px;
+                padding: 4px;
+                color: #e9edef;
+                font-family: 'Segoe UI', 'Cairo', sans-serif;
+                font-size: 12.5px;
             }
             QMenu::item {
-                padding: 7px 22px;
-                border-radius: 6px;
+                padding: 5px 18px 5px 14px;
+                border-radius: 5px;
+                margin: 1px 2px;
             }
             QMenu::item:selected {
                 background-color: #172554;
-                color: #93c5fd;
+                color: #60a5fa;
+            }
+            QMenu::item:disabled {
+                color: #64748b;
+                background-color: transparent;
             }
             QMenu::separator {
                 height: 1px;
-                background-color: #2a3942;
-                margin: 4px 8px;
+                background-color: #202c33;
+                margin: 3px 6px;
             }
         """)
 
-        # 1. Focus Mode & Document Lifecycle Actions
+        def _sub(parent, title):
+            s = parent.addMenu(title)
+            s.setLayoutDirection(Qt.RightToLeft)
+            s.setStyleSheet(menu.styleSheet())
+            return s
+
+        # ── 1. وضع التركيز (Focus Mode) ──
         if page:
-            if getattr(page, "_is_focus_mode", False):
-                act_focus = menu.addAction("↩️ إنهاء وضع التركيز واستعادة الشاشة (Esc / F11)")
+            is_focus = getattr(page, "_is_focus_mode", False)
+            if is_focus:
+                act_focus = menu.addAction("↩️ إنهاء وضع التركيز (Esc / F11)")
                 act_focus.triggered.connect(page.exit_focus_mode)
             else:
                 act_focus = menu.addAction("⛶ وضع التركيز بكامل الشاشة (F11)")
                 act_focus.triggered.connect(page.enter_focus_mode)
-
-            act_new = menu.addAction("📄 مستند جديد (Ctrl+N)")
-            act_new.triggered.connect(lambda: page.new_tab())
-
-            act_save = menu.addAction("💾 حفظ المستند (Ctrl+S)")
-            act_save.triggered.connect(page.save_current_tab)
-
-            act_save_as = menu.addAction("💾 حفظ باسم... (Ctrl+Shift+S)")
-            act_save_as.triggered.connect(page.save_as_current_tab)
-
-            act_open = menu.addAction("📂 فتح ملف... (Ctrl+O)")
-            act_open.triggered.connect(page.open_file)
-
-            act_close = menu.addAction("✕ إغلاق المستند الحالي (Ctrl+W)")
-            act_close.triggered.connect(lambda: page.close_tab(page.tab_widget.currentIndex()))
-
-            act_drawer = menu.addAction("☰ إظهار / إخفاء القائمة الجانبية (Ctrl+B)")
-            act_drawer.triggered.connect(page.toggle_drawer)
-
             menu.addSeparator()
 
-        # 2. Standard Clipboard & Edit Actions
-        act_undo = menu.addAction("↩️ تراجع (Ctrl+Z)")
-        act_undo.setEnabled(self.document().isUndoAvailable())
-        act_undo.triggered.connect(self.undo)
-
-        act_redo = menu.addAction("↪️ إعادة (Ctrl+Y)")
-        act_redo.setEnabled(self.document().isRedoAvailable())
-        act_redo.triggered.connect(self.redo)
-
-        menu.addSeparator()
-
+        # ── 2. العمليات الأساسية المباشرة (قص، نسخ، لصق، حذف) ──
         has_selection = self.textCursor().hasSelection()
-        act_cut = menu.addAction("✂️ قص (Ctrl+X)")
+
+        act_cut = menu.addAction("✂️ قص (Cut)\tCtrl+X")
         act_cut.setEnabled(has_selection)
         act_cut.triggered.connect(self.cut)
 
-        act_copy = menu.addAction("📋 نسخ (Ctrl+C)")
+        act_copy = menu.addAction("📋 نسخ (Copy)\tCtrl+C")
         act_copy.setEnabled(has_selection)
         act_copy.triggered.connect(self.copy)
 
-        act_paste = menu.addAction("📥 لصق (Ctrl+V)")
+        act_paste = menu.addAction("📥 لصق (Paste)\tCtrl+V")
+        act_paste.setEnabled(self.canPaste())
         act_paste.triggered.connect(self.paste)
 
-        act_del = menu.addAction("🗑️ حذف")
+        act_del = menu.addAction("🗑️ حذف (Delete)\tDel")
         act_del.setEnabled(has_selection)
-        act_del.triggered.connect(self.textCursor().deleteChar)
+        def _do_del():
+            c = self.textCursor()
+            if c.hasSelection():
+                c.removeSelectedText()
+            else:
+                c.deleteChar()
+        act_del.triggered.connect(_do_del)
 
-        act_sel_all = menu.addAction("🔘 تحديد الكل (Ctrl+A)")
+        menu.addSeparator()
+
+        # ── 3. التراجع والتحديد ──
+        act_undo = menu.addAction("↩️ تراجع (Undo)\tCtrl+Z")
+        act_undo.setEnabled(self.document().isUndoAvailable())
+        act_undo.triggered.connect(self.undo)
+
+        act_redo = menu.addAction("↪️ إعادة (Redo)\tCtrl+Y")
+        act_redo.setEnabled(self.document().isRedoAvailable())
+        act_redo.triggered.connect(self.redo)
+
+        act_sel_all = menu.addAction("✨ تحديد كل النص (Select All)\tCtrl+A")
         act_sel_all.triggered.connect(self.selectAll)
 
         menu.addSeparator()
 
-        # 3. Search & Text Formatting Actions
+        # ── 4. قائمة فرعية: البحث والتنقل ──
         if page:
-            act_find = menu.addAction("🔍 بحث واستبدال... (Ctrl+F)")
+            sub_search = _sub(menu, "🔍 البحث والتنقل ▾")
+            act_find = sub_search.addAction("🔍 بحث في المستند...\tCtrl+F")
             act_find.triggered.connect(lambda: page.find_replace_bar.show_search(False))
 
-            act_font = menu.addAction("🔤 خيارات وتنسيق الخط...")
-            act_font.triggered.connect(page.show_font_dialog)
+            act_replace = sub_search.addAction("⇄ استبدال في المستند...\tCtrl+H")
+            act_replace.triggered.connect(lambda: page.find_replace_bar.show_search(True))
 
-            act_wrap = menu.addAction("🔄 تبديل التفاف الكلمات (Word Wrap)")
-            act_wrap.triggered.connect(lambda: page.act_word_wrap.trigger())
+            act_goto = sub_search.addAction("🚀 الانتقال إلى سطر...\tCtrl+G")
+            act_goto.triggered.connect(page.go_to_line_dialog)
 
-            act_dir = menu.addAction("↔️ تبديل اتجاه النص (RTL / LTR)")
-            act_dir.triggered.connect(page.toggle_text_direction)
+        # ── 5. قائمة فرعية: تحرير الأسطر والنصوص ──
+        sub_text = _sub(menu, "⚡ تحرير الأسطر والنصوص ▾")
 
-            menu.addSeparator()
+        act_sel_line = sub_text.addAction("📌 تحديد السطر الحالي")
+        act_sel_line.triggered.connect(self.select_current_line)
 
-        # 4. Helper Tools ("وكل ما يساعد")
-        act_time = menu.addAction("🕒 إدراج الوقت والتاريخ (F5)")
-        act_time.triggered.connect(lambda: self.insertPlainText(datetime.now().strftime("%I:%M %p %m/%d/%Y")))
+        act_dup = sub_text.addAction("📑 تكرار السطر الحالي\tCtrl+D")
+        act_dup.triggered.connect(self.duplicate_current_line)
+
+        act_del_line = sub_text.addAction("🗑️ حذف السطر الحالي")
+        act_del_line.triggered.connect(self.delete_current_line)
+
+        act_time = sub_text.addAction("⏰ إدراج الوقت والتاريخ\tF5")
+        act_time.triggered.connect(self.insert_time_date)
+
+        sub_text.addSeparator()
+
+        # حالة الأحرف
+        sub_case = _sub(sub_text, "🔠 حالة الأحرف ▾")
+        act_upper = sub_case.addAction("🔠 أحرف كبيرة (UPPERCASE)")
+        act_upper.triggered.connect(lambda: self.transform_case("upper"))
+        act_lower = sub_case.addAction("🔡 أحرف صغيرة (lowercase)")
+        act_lower.triggered.connect(lambda: self.transform_case("lower"))
+        act_title = sub_case.addAction("🔤 حالة العنوان (Title Case)")
+        act_title.triggered.connect(lambda: self.transform_case("title"))
+        act_swap = sub_case.addAction("🔀 عكس حالة الأحرف (Toggle Case)")
+        act_swap.triggered.connect(lambda: self.transform_case("swap"))
+
+        # فرز وترتيب الأسطر
+        sub_sort = _sub(sub_text, "🔀 فرز وترتيب الأسطر ▾")
+        act_sort_asc = sub_sort.addAction("⬆️ ترتيب تصاعدياً (A ➔ Z)")
+        act_sort_asc.triggered.connect(lambda: self.sort_lines(True))
+        act_sort_desc = sub_sort.addAction("⬇️ ترتيب تنازلياً (Z ➔ A)")
+        act_sort_desc.triggered.connect(lambda: self.sort_lines(False))
+
+        # تنظيف وتنسيق الأسطر
+        sub_clean = _sub(sub_text, "🧹 تنظيف وتنسيق الأسطر ▾")
+        act_clean = sub_clean.addAction("🧹 حذف كافة الأسطر الفارغة")
+        act_clean.triggered.connect(self.remove_empty_lines)
+        act_trim = sub_clean.addAction("✂️ إزالة الفراغات الزائدة (Trim)")
+        act_trim.triggered.connect(self.trim_whitespace)
+        act_nums = sub_clean.addAction("🔢 ترقيم كافة الأسطر")
+        act_nums.triggered.connect(self.number_lines)
+
+        # ── 6. قائمة فرعية: التنسيق والمظهر ──
+        sub_fmt = _sub(menu, "🎨 التنسيق والمظهر ▾")
 
         if page:
-            act_dup = menu.addAction("📑 تكرار السطر الحالي (Ctrl+D)")
-            act_dup.triggered.connect(page.duplicate_line)
+            act_font = sub_fmt.addAction("🔤 خيارات وتنسيق الخط...")
+            act_font.triggered.connect(page.choose_font_dialog)
 
-            act_clean = menu.addAction("🧹 تنظيف الأسطر الفارغة المكررة")
-            act_clean.triggered.connect(page.remove_empty_lines)
+        is_wrapped = self.lineWrapMode() != QPlainTextEdit.LineWrapMode.NoWrap
+        act_wrap = sub_fmt.addAction("↩️ التفاف النص (Word Wrap)")
+        act_wrap.setCheckable(True)
+        act_wrap.setChecked(is_wrapped)
+        def _toggle_wrap():
+            now_wrap = not (self.lineWrapMode() != QPlainTextEdit.LineWrapMode.NoWrap)
+            self.toggle_word_wrap(now_wrap)
+            if page and hasattr(page, "act_word_wrap"):
+                page.act_word_wrap.setChecked(now_wrap)
+            if page and hasattr(page, "_toast"):
+                page._toast("تم تفعيل التفاف النص (Word Wrap)" if now_wrap else "تم إلغاء التفاف النص", False)
+        act_wrap.triggered.connect(_toggle_wrap)
 
-            # Case submenu
-            case_menu = menu.addMenu("🔠 تحويل حالة الأحرف")
-            act_upper = case_menu.addAction("🔠 أحرف كبيرة (UPPERCASE)")
-            act_upper.triggered.connect(lambda: page.transform_case("upper"))
-            act_lower = case_menu.addAction("🔡 أحرف صغيرة (lowercase)")
-            act_lower.triggered.connect(lambda: page.transform_case("lower"))
-            act_title = case_menu.addAction("🔤 تكبير أول حرف (Title Case)")
-            act_title.triggered.connect(lambda: page.transform_case("title"))
+        sub_fmt.addSeparator()
 
-            menu.addSeparator()
+        sub_dir = _sub(sub_fmt, "↔️ اتجاه ومحاذاة النص ▾")
+        act_rtl = sub_dir.addAction("➡️ اتجاه: من اليمين لليسار (RTL - عربي)")
+        act_rtl.triggered.connect(lambda: page._set_direction(True) if page else self.set_text_direction(True))
+        act_ltr = sub_dir.addAction("⬅️ اتجاه: من اليسار لليمين (LTR - إنجليزي)")
+        act_ltr.triggered.connect(lambda: page._set_direction(False) if page else self.set_text_direction(False))
+        sub_dir.addSeparator()
+        act_al_r = sub_dir.addAction("➡️ محاذاة لليمين")
+        act_al_r.triggered.connect(lambda: self.set_text_alignment(Qt.AlignRight))
+        act_al_c = sub_dir.addAction("↔️ محاذاة للوسط")
+        act_al_c.triggered.connect(lambda: self.set_text_alignment(Qt.AlignCenter))
+        act_al_l = sub_dir.addAction("⬅️ محاذاة لليسار")
+        act_al_l.triggered.connect(lambda: self.set_text_alignment(Qt.AlignLeft))
 
-            # 5. SnipGlide Productivity Integration
-            act_snip = menu.addAction("✂️ تحويل المحدد إلى اختصار SnipGlide")
+        sub_zoom = _sub(sub_fmt, "🔍 التكبير والتصغير ▾")
+        act_zin = sub_zoom.addAction("➕ تكبير (Zoom In)\tCtrl++")
+        act_zin.triggered.connect(self.zoom_in)
+        act_zout = sub_zoom.addAction("➖ تصغير (Zoom Out)\tCtrl+-")
+        act_zout.triggered.connect(self.zoom_out)
+        act_zres = sub_zoom.addAction("🔄 الحجم الطبيعي 100%\tCtrl+0")
+        act_zres.triggered.connect(self.reset_zoom)
+
+        # ── 7. قائمة فرعية: إدارة الملف والمستند ──
+        if page:
+            sub_doc = _sub(menu, "📁 المستند والملف ▾")
+            act_new = sub_doc.addAction("📄 علامة تبويب جديدة\tCtrl+N")
+            act_new.triggered.connect(lambda: page.new_tab())
+
+            act_save = sub_doc.addAction("💾 حفظ المستند\tCtrl+S")
+            act_save.triggered.connect(page.save_current_tab)
+
+            act_save_as = sub_doc.addAction("💾 حفظ باسم...\tCtrl+Shift+S")
+            act_save_as.triggered.connect(page.save_as_current_tab)
+
+            act_open = sub_doc.addAction("📂 فتح ملف...\tCtrl+O")
+            act_open.triggered.connect(page.open_file)
+
+            act_stats = sub_doc.addAction("📊 إحصائيات النص...")
+            act_stats.triggered.connect(page.show_text_stats_dialog)
+
+            act_print = sub_doc.addAction("🖨️ طباعة / تصدير PDF...\tCtrl+P")
+            act_print.triggered.connect(page.print_or_export_pdf)
+
+            sub_doc.addSeparator()
+
+            act_close = sub_doc.addAction("✕ إغلاق التبويب الحالي\tCtrl+W")
+            act_close.triggered.connect(lambda: page.close_tab(page.tab_widget.currentIndex()))
+
+            # ── 8. قائمة فرعية: أدوات SnipGlide ──
+            sub_snip = _sub(menu, "🚀 أدوات SnipGlide ▾")
+            act_snip = sub_snip.addAction("✂️ تحويل المحدد إلى اختصار SnipGlide")
             act_snip.setEnabled(has_selection)
             act_snip.triggered.connect(page.convert_selection_to_snippet)
 
-            act_chat = menu.addAction("💬 إرسال إلى شات نوت (Chat Notes)")
-            act_chat.triggered.connect(page.send_to_chat_notes)
-
-            act_notes = menu.addAction("📝 حفظ في ملاحظات SnipGlide")
+            act_notes = sub_snip.addAction("📝 حفظ في ملاحظات SnipGlide اللاصقة")
             act_notes.triggered.connect(page.save_to_snipglide_notes)
+
+            act_chat = sub_snip.addAction("💬 إرسال إلى شات نوت (Chat Notes)")
+            act_chat.triggered.connect(page.send_to_chat_notes)
 
         menu.exec(event.globalPos())
 
@@ -2410,6 +2622,7 @@ class NotepadPageQt(QWidget):
         self._refresh_folder_bar()
 
     def _compute_counts(self) -> Dict[str, int]:
+        self.folders = sanitize_folders_list(self.folders)
         counts = {
             "all": 0,
             "favorites": 0,
@@ -3464,6 +3677,33 @@ class NotepadPageQt(QWidget):
             self.apply_font_to_all_tabs(selected_font)
             self._toast(f"تم تغيير الخط إلى: {selected_font.family()} بحجم {selected_font.pointSize()}", False)
 
+    def show_font_dialog(self):
+        self.choose_font_dialog()
+
+    def duplicate_line(self):
+        self._duplicate_current_line()
+
+    def remove_empty_lines(self):
+        self._remove_empty_lines()
+
+    def toggle_text_direction(self):
+        editor = self.get_current_editor()
+        if editor:
+            is_rtl = editor.layoutDirection() == Qt.RightToLeft
+            self._set_direction(not is_rtl)
+        else:
+            self._set_direction(not getattr(self, "is_current_direction_rtl", True))
+
+    def transform_case(self, mode: str):
+        if mode == "upper":
+            self._transform_to_upper()
+        elif mode == "lower":
+            self._transform_to_lower()
+        elif mode == "title":
+            self._transform_to_title()
+        elif mode in ("toggle", "swap"):
+            self._transform_toggle_case()
+
     def _on_toggle_word_wrap(self, checked: bool):
         for i in range(self.tab_widget.count()):
             tab = self.tab_widget.widget(i)
@@ -3675,6 +3915,7 @@ class NotepadPageQt(QWidget):
         font_fam = editor.font().family() if editor else "Consolas"
         font_sz = editor.base_font_size if editor else 14
 
+        self.folders = sanitize_folders_list(self.folders)
         session_data = {
             "tabs": tabs_data,
             "active_index": self.tab_widget.currentIndex(),
@@ -3701,11 +3942,7 @@ class NotepadPageQt(QWidget):
         settings = session.get("settings", DEFAULT_NOTEPAD_SETTINGS)
 
         # Organization state restore
-        self.folders = session.get("folders", ["العامة", "العمل", "شخصي"])
-        if not isinstance(self.folders, list) or not self.folders:
-            self.folders = ["العامة", "العمل", "شخصي"]
-        if "العامة" not in self.folders:
-            self.folders.insert(0, "العامة")
+        self.folders = sanitize_folders_list(session.get("folders", ["العامة", "العمل", "شخصي"]))
 
         self.active_folder = session.get("active_folder", "كافة الملفات")
         self.active_filter = session.get("active_filter", "all")
