@@ -1,69 +1,96 @@
-# SnipGlide Python
+# 🚀 SnipGlide Python Pro
 
-A background text snippet expansion application for Windows.
+<div align="center">
 
-## Features
+![SnipGlide Logo](https://raw.githubusercontent.com/mahmoud-gala-dev/SnipGlide/main/snipglide/assets/icon.ico)
 
-- **Categorize Snippets**: Group snippets into custom groups (e.g. Work, Personal) and filter them in the list.
-- **Excel Support**: Import shortcuts directly from Excel (`.xlsx`) files or download a formatted template to quickly structure your shortcuts.
-- **English UI**: The entire user interface, alerts, and settings are fully localized in English.
-- **Flexible Triggers**: Accepts any custom text or symbol sequence, such as:
-  - `#sig`
-  - `$date`
-  - `!@#$`
-  - `hello`
-- No trailing colons or fixed prefixes required.
-- Modern look and feel supporting Light and Dark modes.
-- Runs silently in the background with a system tray icon.
-- Show or hide the app from the background with `Ctrl+Alt+Shift+S`.
-- Zoom the app UI with the toolbar buttons or `Ctrl++`, `Ctrl+-`, and `Ctrl+0`.
-- Notes section with categories, pinned notes, quick search, and one-click copy.
-- Notes editor supports Arabic RTL writing, font size, line spacing, and stores notes-page preferences in SQLite.
-- Clicking a note copies its content to the clipboard immediately.
-- Clipboard history keeps the latest 50 entries only, shown as 5 pages with 10 entries per page.
-- Toggle individual snippets on/off dynamically.
-- Quick real-time search.
-- Local automatic persistence: data is saved locally on your device under `%APPDATA%\SnipGlidePython` (it never leaves your machine).
+### **The All-in-One Desktop Productivity Suite for Windows**
+**تطبيق الإنتاجية الشامل: توسيع النصوص الذكي، التقاط وتسجيل الشاشة فيديو، إدارة المجلدات بالسحب والإفلات، والمفكرة المتقدمة.**
 
-## Running from Source
+[![Python Version](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.14-blue?style=for-the-badge&logo=python)](https://www.python.org/)
+[![GUI Framework](https://img.shields.io/badge/PySide6-Qt6-green?style=for-the-badge&logo=qt)](https://www.qt.io/)
+[![Database](https://img.shields.io/badge/SQLite-WAL%20Mode-003B57?style=for-the-badge&logo=sqlite)](https://www.sqlite.org/)
+[![Platform](https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011-0078D6?style=for-the-badge&logo=windows)](https://microsoft.com)
+[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Local%20First-success?style=for-the-badge)](https://github.com/mahmoud-gala-dev/SnipGlide)
 
-1. Install Python 3.11 or newer.
-2. Open PowerShell or Command Prompt inside the project directory.
-3. Execute:
+📖 **[اضغط هنا لقراءة الدليل الشامل والمفصل لجميع المميزات (PROJECT_FEATURES.md)](PROJECT_FEATURES.md)**
+
+</div>
+
+---
+
+## 🌟 Key Highlights / أبرز المميزات
+
+| الميزة | Description |
+|---|---|
+| ⚡ **Smart Text Expansion** | Background global keyboard listener that expands custom snippets (`#sig`, `$date`, etc.) with dynamic variables (`{date}`, `{time}`, `{clipboard}`) and regex support across all Windows apps. |
+| 📸 **Instant Screen Snipping** | Full screen capture (`Ctrl+Print`) and precision area snipping (`Win+Print`) with instant zoom viewer and clipboard copy. |
+| 🎥 **HD Video Screen Recorder** | Record full screen or custom cropped areas into smooth MP4 videos with mouse pointer glow, live floating widget (`REC`), and built-in video player. |
+| 🗂️ **Folders & Drag & Drop** | Organize screenshots and recordings into folders (`العامة`, `العمل`, `مشاريع`, etc.) with glowing visual Drag-and-Drop item transfer. |
+| 🖼️ **3 Switchable View Modes** | Switch seamlessly between **⊞ Large Cards (3-col)**, **▦ Compact Grid (6-col)**, and **☰ Detailed Table/List view (54px rows)**. |
+| 📄 **Full Pagination System** | Fast and responsive pagination bar with customizable page sizes (12, 24, 48, 96, All) and quick navigation. |
+| 📝 **Code Notepad & Editor** | Multi-tab notepad with line numbers, code syntax highlighting, full RTL Arabic writing support, and auto-session recovery. |
+| 💬 **Notes & Chat Notes** | Quick notes with instant copy, categories, audio voice note player, and floating chat head widget. |
+| 📋 **Clipboard History** | Real-time background clipboard monitoring with sensitive data protection and paginated search. |
+| 🔒 **100% Local & Secure** | All data is stored locally in an optimized SQLite database with master PIN security and auto-backup. |
+
+---
+
+## ⌨️ Global Shortcuts / اختصارات لوحة المفاتيح
+
+| Shortcut | Action |
+|---|---|
+| <kbd>Ctrl</kbd> + <kbd>PrintScreen</kbd> | التقاط وحفظ الشاشة بالكامل فوراً (Capture Full Screen) |
+| <kbd>Win</kbd> + <kbd>PrintScreen</kbd> | أداة تحديد واقتصاص جزء مخصص من الشاشة (Area Snipping) |
+| <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> | إظهار / إخفاء التطبيق من الخلفية (Toggle App Window) |
+| <kbd>Ctrl</kbd> + <kbd>B</kbd> | إظهار / طي القائمة الجانبية (Toggle Sidebar Drawer) |
+| <kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>-</kbd> | تكبير / تصغير واجهة البرنامج (Zoom UI) |
+| <kbd>Ctrl</kbd> + <kbd>0</kbd> | إعادة ضبط حجم الواجهة (Reset UI Scale) |
+
+---
+
+## 🚀 Running from Source / التشغيل من السورس كود
+
+1. **Clone the repository:**
+   ```powershell
+   git clone https://github.com/mahmoud-gala-dev/SnipGlide.git
+   cd SnipGlide
+   ```
+
+2. **Activate Virtual Environment & Install Dependencies:**
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+   ```
+
+3. **Launch the Application:**
+   ```powershell
+   python app.py
+   ```
+
+---
+
+## 📦 Building Standalone Executable / بناء ملف EXE مستقل
+
+To build a standalone executable that runs without Python installed:
 
 ```powershell
-# Installs requirements in the environment
-pip install -r requirements.txt
-
-# Runs the application
-python app.py
+pyinstaller SnipGlide.spec
 ```
+The resulting executable will be created in `dist\SnipGlide.exe`.
 
-*Note: You can also use `run.bat` to automatically build/run the virtual environment and install requirements.*
+---
 
-## Building Standalone Executable
+## 📚 Complete Arabic Documentation / الوثيقة الكاملة للمشروع
 
-To compile SnipGlide into a standalone `.exe` file, run:
+لمطالعة الشرح التفصيلي العميق لكل ميزة وأداة ومكون برمجي في التطبيق:
+👉 **[راجع وثيقة المميزات الكاملة PROJECT_FEATURES.md](PROJECT_FEATURES.md)**
 
-```powershell
-build_exe.bat
-```
+---
 
-The resulting executable will be available under:
+<div align="center">
 
-```text
-dist\SnipGlide.exe
-```
+Made with ❤️ by [mahmoud-gala-dev](https://github.com/mahmoud-gala-dev) • Licensed under MIT
 
-## Running at Windows Startup
-
-After building the EXE file:
-1. Press `Win + R` to open the Run dialog.
-2. Type `shell:startup` and press Enter.
-3. Place a shortcut to `SnipGlide.exe` inside the opened Startup folder.
-
-## Notes & Best Practices
-
-- This application is optimized for Windows.
-- Some programs running as Administrator might block keystroke insertion unless SnipGlide is also running with Administrator privileges.
-- To prevent unintended text expansions, use unique prefixes or symbols (e.g., `#sig` or `@@addr`) for triggers.
+</div>
