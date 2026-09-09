@@ -29,11 +29,12 @@ from snipglide.services.exporter_importer import (
 from snipglide.core.config import load_settings, save_settings, APP_NAME, get_arabic_font_family
 
 class MainWindowQt(QMainWindow):
-    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None, screenshot_service=None):
+    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None, screenshot_service=None, recording_service=None):
         super().__init__()
         self.engine_toggle_callback = engine_toggle_callback
         self.snippets_changed_callback = snippets_changed_callback
         self.screenshot_service = screenshot_service
+        self.recording_service = recording_service
         self.settings = load_settings()
         self.font_family = font_family or get_arabic_font_family()
 
@@ -118,6 +119,7 @@ class MainWindowQt(QMainWindow):
         # 6. Screenshots
         self.screenshots_page = ScreenshotsPageQt(
             screenshot_service=self.screenshot_service,
+            recording_service=self.recording_service,
             toast_callback=self.toast,
             parent=self
         )
@@ -505,6 +507,22 @@ class MainWindowQt(QMainWindow):
     def _on_snippets_changed(self):
         if self.snippets_changed_callback:
             self.snippets_changed_callback()
+
+    def _capture_full_screen(self):
+        if self.screenshot_service:
+            self.screenshot_service.capture_full_screen()
+
+    def _start_area_capture(self):
+        if self.screenshot_service:
+            self.screenshot_service.start_area_capture()
+
+    def _trigger_full_video_record(self):
+        if self.recording_service:
+            self.recording_service.start_full_screen_recording()
+
+    def _trigger_area_video_record(self):
+        if self.recording_service:
+            self.recording_service.start_area_recording()
 
     def _navigate_to_snippet(self, text: str):
         self.sidebar.select_page("Snippets")

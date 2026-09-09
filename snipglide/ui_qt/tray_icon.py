@@ -48,14 +48,20 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
         act_open = menu.addAction("🟢 فتح SnipGlide Pro")
         act_open.triggered.connect(self._show_window)
 
-        # Screenshots Quick Actions
+        # Screenshots & Video Quick Actions
         act_shot_full = menu.addAction("📸 التقاط الشاشة كاملة (Ctrl + Print)")
         act_shot_full.triggered.connect(self._capture_full_screen)
 
         act_shot_area = menu.addAction("✂️ تحديد جزء من الشاشة (Win + Print)")
         act_shot_area.triggered.connect(self._start_area_capture)
 
-        act_open_shots = menu.addAction("🖼️ استعراض لقطات الشاشة")
+        act_rec_full = menu.addAction("🎥 بدء تسجيل فيديو (شاشة كاملة)")
+        act_rec_full.triggered.connect(self._start_video_record_full)
+
+        act_rec_area = menu.addAction("🎬 بدء تسجيل فيديو (مساحة محددة)")
+        act_rec_area.triggered.connect(self._start_video_record_area)
+
+        act_open_shots = menu.addAction("🖼️ استعراض اللقطات والتسجيلات")
         act_open_shots.triggered.connect(self._open_screenshots_page)
 
         menu.addSeparator()
@@ -138,6 +144,14 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
     def _start_area_capture(self):
         if self.main_window and hasattr(self.main_window, "_start_area_capture"):
             self.main_window._start_area_capture()
+
+    def _start_video_record_full(self):
+        if self.main_window and hasattr(self.main_window, "_trigger_full_video_record"):
+            self.main_window._trigger_full_video_record()
+
+    def _start_video_record_area(self):
+        if self.main_window and hasattr(self.main_window, "_trigger_area_video_record"):
+            self.main_window._trigger_area_video_record()
 
     def _open_screenshots_page(self):
         if self.main_window:

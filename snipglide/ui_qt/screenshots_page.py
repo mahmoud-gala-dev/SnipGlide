@@ -3,9 +3,10 @@ import subprocess
 from pathlib import Path
 from typing import Optional, Callable
 
-from PySide6.QtCore import Qt, QSize, Signal, QTimer
+from PySide6.QtCore import Qt, QSize, Signal, QTimer, QRect, QPoint
 from PySide6.QtGui import (
-    QPixmap, QIcon, QFont, QCursor, QColor, QPainter, QImageReader
+    QPixmap, QIcon, QFont, QCursor, QColor, QPainter, QImageReader,
+    QPen, QBrush, QImage, QPolygon
 )
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
@@ -19,6 +20,9 @@ from snipglide.database.screenshot_repo import (
 )
 from snipglide.models.screenshot import Screenshot
 from snipglide.services.screenshot_service import ScreenshotService
+from snipglide.services.video_recording_service import ScreenRecordingService
+from snipglide.ui_qt.recording_floating_widget import ScreenRecorderFloatingWidget
+from snipglide.ui_qt.video_player_dialog import VideoPlayerDialog
 from snipglide.utils.logger import logger
 
 
@@ -293,10 +297,22 @@ class ScreenshotCardWidget(QFrame):
         info_row.setSpacing(6)
 
         # Type Pill
-        is_full = self.screenshot.capture_type == "full"
-        type_text = "كامل الشاشة 🖥️" if is_full else "قص مقتطع ✂️"
-        type_color = "#3b82f6" if is_full else "#8b5cf6"
-        type_bg = "#1e3a8a" if is_full else "#4c1d95"
+        if self.screenshot.capture_type == "video_full":
+            type_text = "فيديو كامل 🎥"
+            type_color = "#f87171"
+            type_bg = "#450a0a"
+        elif self.screenshot.capture_type == "video_area":
+            type_text = "فيديو مقتطع 🎬"
+            type_color = "#fb923c"
+            type_bg = "#431407"
+        elif self.screenshot.capture_type == "full":
+            type_text = "كامل الشاشة 🖥️"
+            type_color = "#60a5fa"
+            type_bg = "#1e3a8a"
+        else:
+            type_text = "قص مقتطع ✂️"
+            type_color = "#c084fc"
+            type_bg = "#4c1d95"
 
         type_badge = QLabel(type_text)
         type_badge.setStyleSheet(f"""
@@ -308,6 +324,20 @@ class ScreenshotCardWidget(QFrame):
             border-radius: 6px;
         """)
         info_row.addWidget(type_badge)
+
+        # Video Duration Badge if available
+        if self.screenshot.is_video and self.screenshot.duration > 0:
+            dur_badge = QLabel(f"⏱️ {self.screenshot.formatted_duration}")
+            dur_badge.setStyleSheet("""
+                background-color: #0f172a;
+                color: #38bdf8;
+                font-size: 11px;
+                font-weight: bold;
+                padding: 3px 8px;
+                border-radius: 6px;
+                border: 1px solid #1e293b;
+            """)
+            info_row.addWidget(dur_badge)
 
         # Dimensions badge
         dim_badge = QLabel(f"{self.screenshot.width}×{self.screenshot.height}")
@@ -364,49 +394,92 @@ class ScreenshotCardWidget(QFrame):
         action_row = QHBoxLayout()
         action_row.setSpacing(6)
 
-        btn_copy = QPushButton("📋 نسخ")
-        btn_copy.setToolTip("نسخ الصورة إلى الحافظة (Ctrl+V)")
-        btn_copy.setFixedHeight(30)
-        btn_copy.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_copy.setStyleSheet("""
-            QPushButton {
-                background-color: #202c33;
-                color: #60a5fa;
-                border: 1px solid #3b82f6;
-                border-radius: 7px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 0 8px;
-            }
-            QPushButton:hover {
-                background-color: #172554;
-                color: #93c5fd;
-            }
-        """)
-        btn_copy.clicked.connect(self._copy_image)
-        action_row.addWidget(btn_copy)
+        if self.screenshot.is_video:
+            btn_play = QPushButton("▶ تشغيل")
+            btn_play.setToolTip("مشاهدة وتشغيل مقطع الفيديو")
+            btn_play.setFixedHeight(30)
+            btn_play.setCursor(QCursor(Qt.PointingHandCursor))
+            btn_play.setStyleSheet("""
+                QPushButton {
+                    background-color: #2563eb;
+                    color: white;
+                    border: none;
+                    border-radius: 7px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 0 10px;
+                }
+                QPushButton:hover {
+                    background-color: #1d4ed8;
+                }
+            """)
+            btn_play.clicked.connect(lambda: self.preview_requested.emit(self.screenshot))
+            action_row.addWidget(btn_play)
 
-        btn_view = QPushButton("🔍 معاينة")
-        btn_view.setToolTip("عرض وتكبير الصورة بالكامل")
-        btn_view.setFixedHeight(30)
-        btn_view.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_view.setStyleSheet("""
-            QPushButton {
-                background-color: #202c33;
-                color: #e9edef;
-                border: 1px solid #2a3942;
-                border-radius: 7px;
-                font-size: 12px;
-                font-weight: bold;
-                padding: 0 8px;
-            }
-            QPushButton:hover {
-                background-color: #2a3942;
-                color: #f0f2f5;
-            }
-        """)
-        btn_view.clicked.connect(lambda: self.preview_requested.emit(self.screenshot))
-        action_row.addWidget(btn_view)
+            btn_copy = QPushButton("📋 المسار")
+            btn_copy.setToolTip("نسخ مسار ملف الفيديو إلى الحافظة")
+            btn_copy.setFixedHeight(30)
+            btn_copy.setCursor(QCursor(Qt.PointingHandCursor))
+            btn_copy.setStyleSheet("""
+                QPushButton {
+                    background-color: #202c33;
+                    color: #94a3b8;
+                    border: 1px solid #2a3942;
+                    border-radius: 7px;
+                    font-size: 12px;
+                    padding: 0 8px;
+                }
+                QPushButton:hover {
+                    background-color: #2a3942;
+                    color: #e9edef;
+                }
+            """)
+            btn_copy.clicked.connect(self._copy_image)
+            action_row.addWidget(btn_copy)
+        else:
+            btn_copy = QPushButton("📋 نسخ")
+            btn_copy.setToolTip("نسخ الصورة إلى الحافظة (Ctrl+V)")
+            btn_copy.setFixedHeight(30)
+            btn_copy.setCursor(QCursor(Qt.PointingHandCursor))
+            btn_copy.setStyleSheet("""
+                QPushButton {
+                    background-color: #202c33;
+                    color: #60a5fa;
+                    border: 1px solid #3b82f6;
+                    border-radius: 7px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 0 8px;
+                }
+                QPushButton:hover {
+                    background-color: #172554;
+                    color: #93c5fd;
+                }
+            """)
+            btn_copy.clicked.connect(self._copy_image)
+            action_row.addWidget(btn_copy)
+
+            btn_view = QPushButton("🔍 معاينة")
+            btn_view.setToolTip("عرض وتكبير الصورة بالكامل")
+            btn_view.setFixedHeight(30)
+            btn_view.setCursor(QCursor(Qt.PointingHandCursor))
+            btn_view.setStyleSheet("""
+                QPushButton {
+                    background-color: #202c33;
+                    color: #e9edef;
+                    border: 1px solid #2a3942;
+                    border-radius: 7px;
+                    font-size: 12px;
+                    font-weight: bold;
+                    padding: 0 8px;
+                }
+                QPushButton:hover {
+                    background-color: #2a3942;
+                    color: #f0f2f5;
+                }
+            """)
+            btn_view.clicked.connect(lambda: self.preview_requested.emit(self.screenshot))
+            action_row.addWidget(btn_view)
 
         btn_folder = QPushButton("📁")
         btn_folder.setToolTip("إظهار الملف في المجلد")
@@ -428,7 +501,7 @@ class ScreenshotCardWidget(QFrame):
         action_row.addWidget(btn_folder)
 
         btn_del = QPushButton("🗑️")
-        btn_del.setToolTip("حذف لقطة الشاشة")
+        btn_del.setToolTip("حذف لقطة الشاشة أو التسجيل")
         btn_del.setFixedSize(30, 30)
         btn_del.setCursor(QCursor(Qt.PointingHandCursor))
         btn_del.setStyleSheet("""
@@ -451,7 +524,66 @@ class ScreenshotCardWidget(QFrame):
 
     def _load_thumbnail(self):
         if not os.path.exists(self.screenshot.file_path):
-            self.thumb_label.setText("الصورة غير متوفرة")
+            self.thumb_label.setText("الملف غير متوفر")
+            return
+
+        if self.screenshot.is_video:
+            pix = None
+            thumb_path = self.screenshot.thumbnail_path
+            if thumb_path and os.path.exists(thumb_path):
+                pix = QPixmap(thumb_path)
+            else:
+                try:
+                    import cv2
+                    cap = cv2.VideoCapture(self.screenshot.file_path)
+                    ret, frame = cap.read()
+                    cap.release()
+                    if ret and frame is not None:
+                        h, w, ch = frame.shape
+                        qimg = QImage(frame.data, w, h, ch * w, QImage.Format.Format_BGR888)
+                        pix = QPixmap.fromImage(qimg)
+                except Exception:
+                    pass
+
+            if pix and not pix.isNull():
+                scaled = pix.scaled(280, 150, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
+                final_pix = scaled.copy(max(0, (scaled.width() - 280) // 2), max(0, (scaled.height() - 150) // 2), 280, 150)
+
+                # Draw Play Button & Duration Overlay
+                painter = QPainter(final_pix)
+                painter.setRenderHint(QPainter.Antialiasing, True)
+
+                # Play button circle in center
+                center = final_pix.rect().center()
+                painter.setBrush(QColor(0, 0, 0, 150))
+                painter.setPen(QPen(QColor("#ffffff"), 2))
+                painter.drawEllipse(center, 22, 22)
+
+                # Play triangle
+                painter.setBrush(QColor("#ffffff"))
+                painter.setPen(Qt.NoPen)
+                poly = QPolygon([
+                    QPoint(center.x() - 5, center.y() - 9),
+                    QPoint(center.x() + 9, center.y()),
+                    QPoint(center.x() - 5, center.y() + 9),
+                ])
+                painter.drawPolygon(poly)
+
+                # Duration pill in bottom right
+                if self.screenshot.duration > 0:
+                    dur_text = f"🎥 {self.screenshot.formatted_duration}"
+                    painter.setFont(QFont("Segoe UI", 9, QFont.Bold))
+                    dur_rect = QRect(final_pix.width() - 80, final_pix.height() - 26, 72, 20)
+                    painter.setBrush(QColor(0, 0, 0, 190))
+                    painter.drawRoundedRect(dur_rect, 6, 6)
+                    painter.setPen(QColor("#ffffff"))
+                    painter.drawText(dur_rect, Qt.AlignCenter, dur_text)
+
+                painter.end()
+                self.thumb_label.setPixmap(final_pix)
+            else:
+                self.thumb_label.setText("🎬 مقطع فيديو\n(انقر للتشغيل)")
+                self.thumb_label.setStyleSheet("color: #60a5fa; font-size: 13px; font-weight: bold;")
             return
 
         reader = QImageReader(self.screenshot.file_path)
@@ -464,6 +596,11 @@ class ScreenshotCardWidget(QFrame):
             self.thumb_label.setText("خطأ في قراءة الصورة")
 
     def _copy_image(self):
+        if self.screenshot.is_video:
+            QApplication.clipboard().setText(self.screenshot.file_path)
+            self.copied.emit("تم نسخ مسار ملف الفيديو إلى الحافظة بنجاح! 📋")
+            return
+
         if os.path.exists(self.screenshot.file_path):
             pix = QPixmap(self.screenshot.file_path)
             if not pix.isNull():
@@ -499,15 +636,27 @@ class ScreenshotCardWidget(QFrame):
 
 class ScreenshotsPageQt(QWidget):
     """
-    Main responsive UI section for capturing, viewing, organizing, and managing screenshots.
+    Main responsive UI section for capturing, viewing, organizing, and managing screenshots and screen recordings.
     """
 
-    def __init__(self, screenshot_service: Optional[ScreenshotService] = None, toast_callback: Optional[Callable[[str, bool], None]] = None, parent=None):
+    def __init__(
+        self,
+        screenshot_service: Optional[ScreenshotService] = None,
+        recording_service: Optional[ScreenRecordingService] = None,
+        toast_callback: Optional[Callable[[str, bool], None]] = None,
+        parent=None
+    ):
         super().__init__(parent)
         self.screenshot_service = screenshot_service
+        self.recording_service = recording_service
         self.toast = toast_callback or (lambda msg, err=False: None)
 
-        self.active_filter = "all"  # 'all', 'full', 'area', 'favorite'
+        self.floating_recorder = None
+        if self.recording_service:
+            self.floating_recorder = ScreenRecorderFloatingWidget(self.recording_service)
+            self.recording_service.recording_saved.connect(self._on_external_recording_saved)
+
+        self.active_filter = "all"  # 'all', 'full', 'area', 'video', 'favorite'
         self.search_text = ""
 
         self._setup_ui()
@@ -524,7 +673,7 @@ class ScreenshotsPageQt(QWidget):
 
         # ── 1. Header Row ──
         header_row = QHBoxLayout()
-        header_row.setSpacing(14)
+        header_row.setSpacing(12)
 
         # Drawer toggle
         btn_drawer = QPushButton("☰ القائمة")
@@ -551,30 +700,30 @@ class ScreenshotsPageQt(QWidget):
 
         title_box = QVBoxLayout()
         title_box.setSpacing(3)
-        title = QLabel("📸 لقطات وقص الشاشة (Screenshots & Snip)")
-        title.setStyleSheet("font-size: 24px; font-weight: 800; color: #f0f2f5;")
+        title = QLabel("📸 لقطات وتسجيلات الشاشة (Screenshots & Video)")
+        title.setStyleSheet("font-size: 23px; font-weight: 800; color: #f0f2f5;")
         title_box.addWidget(title)
 
-        subtitle = QLabel("التقاط فوري في الخلفية: كامل الشاشة (Ctrl + Print) وتحديد مساحة مخصصة (Win + Print)")
-        subtitle.setStyleSheet("font-size: 13px; color: #94a3b8;")
+        subtitle = QLabel("التقاط وتسجيل فوري: شاشة كاملة (Ctrl + Print) • تحديد مساحة (Win + Print) • تصوير فيديو MP4")
+        subtitle.setStyleSheet("font-size: 12px; color: #94a3b8;")
         title_box.addWidget(subtitle)
         header_row.addLayout(title_box)
 
         header_row.addStretch()
 
         # Primary Action: Full Screenshot Button
-        btn_capture_full = QPushButton("📸 شاشة كاملة (Ctrl + Print)")
-        btn_capture_full.setToolTip("التقاط الشاشة بالكامل وحفظها فوراً")
+        btn_capture_full = QPushButton("📸 لقطة كاملة")
+        btn_capture_full.setToolTip("التقاط الشاشة بالكامل فوراً (Ctrl + Print)")
         btn_capture_full.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_capture_full.setFixedHeight(42)
+        btn_capture_full.setFixedHeight(40)
         btn_capture_full.setStyleSheet("""
             QPushButton {
                 background-color: #2563eb;
                 color: white;
                 font-weight: bold;
-                font-size: 13px;
-                border-radius: 10px;
-                padding: 0 18px;
+                font-size: 12px;
+                border-radius: 9px;
+                padding: 0 14px;
                 border: none;
             }
             QPushButton:hover {
@@ -585,18 +734,18 @@ class ScreenshotsPageQt(QWidget):
         header_row.addWidget(btn_capture_full)
 
         # Primary Action: Area Snipping Button
-        btn_capture_area = QPushButton("✂️ قص جزء (Win + Print)")
-        btn_capture_area.setToolTip("فتح أداة التحديد وقص جزء من الشاشة")
+        btn_capture_area = QPushButton("✂️ قص جزء")
+        btn_capture_area.setToolTip("فتح أداة تحديد واقتصاص جزء من الشاشة (Win + Print)")
         btn_capture_area.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_capture_area.setFixedHeight(42)
+        btn_capture_area.setFixedHeight(40)
         btn_capture_area.setStyleSheet("""
             QPushButton {
                 background-color: #7c3aed;
                 color: white;
                 font-weight: bold;
-                font-size: 13px;
-                border-radius: 10px;
-                padding: 0 18px;
+                font-size: 12px;
+                border-radius: 9px;
+                padding: 0 14px;
                 border: none;
             }
             QPushButton:hover {
@@ -606,20 +755,64 @@ class ScreenshotsPageQt(QWidget):
         btn_capture_area.clicked.connect(self._trigger_area_capture)
         header_row.addWidget(btn_capture_area)
 
+        # Video Action: Full Screen Video Record
+        btn_record_full = QPushButton("🎥 تسجيل فيديو كامل")
+        btn_record_full.setToolTip("بدء تسجيل فيديو للشاشة بالكامل بصيغة MP4 عالية الدقة")
+        btn_record_full.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_record_full.setFixedHeight(40)
+        btn_record_full.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                border-radius: 9px;
+                padding: 0 14px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+        """)
+        btn_record_full.clicked.connect(self._trigger_full_video_record)
+        header_row.addWidget(btn_record_full)
+
+        # Video Action: Area Video Record
+        btn_record_area = QPushButton("🎬 تسجيل مساحة محددة")
+        btn_record_area.setToolTip("تحديد مساحة مخصصة من الشاشة وبدء تسجيلها فيديو")
+        btn_record_area.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_record_area.setFixedHeight(40)
+        btn_record_area.setStyleSheet("""
+            QPushButton {
+                background-color: #ea580c;
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                border-radius: 9px;
+                padding: 0 14px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #c2410c;
+            }
+        """)
+        btn_record_area.clicked.connect(self._trigger_area_video_record)
+        header_row.addWidget(btn_record_area)
+
         # Open Folder Button
-        btn_folder = QPushButton("📁 مجلد الحفظ")
-        btn_folder.setToolTip("فتح مجلد حفظ لقطات الشاشة في مستكشف ويندوز")
+        btn_folder = QPushButton("📁 المجلد")
+        btn_folder.setToolTip("فتح مجلد حفظ اللقطات والتسجيلات في مستكشف ويندوز")
         btn_folder.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_folder.setFixedHeight(42)
+        btn_folder.setFixedHeight(40)
         btn_folder.setStyleSheet("""
             QPushButton {
                 background-color: #182229;
                 color: #e9edef;
                 border: 1.5px solid #2a3942;
-                border-radius: 10px;
-                padding: 0 16px;
+                border-radius: 9px;
+                padding: 0 14px;
                 font-weight: bold;
-                font-size: 13px;
+                font-size: 12px;
             }
             QPushButton:hover {
                 background-color: #202c33;
@@ -658,6 +851,7 @@ class ScreenshotsPageQt(QWidget):
             ("all", "الكل 📁"),
             ("full", "شاشة كاملة 🖥️"),
             ("area", "أجزاء مقتطعة ✂️"),
+            ("video", "تسجيلات الفيديو 🎥"),
             ("favorite", "المفضلة ⭐"),
         ]
         for f_id, f_text in filters:
@@ -760,6 +954,8 @@ class ScreenshotsPageQt(QWidget):
             capture_type = "full"
         elif self.active_filter == "area":
             capture_type = "area"
+        elif self.active_filter == "video":
+            capture_type = "video"
         elif self.active_filter == "favorite":
             favorites_only = True
 
@@ -777,7 +973,7 @@ class ScreenshotsPageQt(QWidget):
             self._render_empty_state()
             return
 
-        # Render 3 or 4 columns based on container width
+        # Render 3 columns in grid
         columns = 3
         for idx, shot in enumerate(screenshots):
             card = ScreenshotCardWidget(shot, parent=self)
@@ -804,32 +1000,33 @@ class ScreenshotsPageQt(QWidget):
         vbox.setAlignment(Qt.AlignCenter)
         vbox.setSpacing(14)
 
-        icon_lbl = QLabel("📸")
+        icon_lbl = QLabel("📸 🎬")
         icon_lbl.setAlignment(Qt.AlignCenter)
-        icon_lbl.setStyleSheet("font-size: 54px; border: none;")
+        icon_lbl.setStyleSheet("font-size: 50px; border: none;")
         vbox.addWidget(icon_lbl)
 
-        title = QLabel("لا توجد لقطات شاشة بعد!")
+        title = QLabel("لا توجد لقطات أو تسجيلات بعد!")
         title.setAlignment(Qt.AlignCenter)
         title.setStyleSheet("font-size: 20px; font-weight: bold; color: #f0f2f5; border: none;")
         vbox.addWidget(title)
 
         desc = QLabel(
-            "يمكنك التقاط الشاشة في أي وقت حتى أثناء تصغير البرنامج في الخلفية:\n"
+            "يمكنك التقاط الشاشة أو تسجيل فيديو في أي وقت حتى أثناء تصغير البرنامج في الخلفية:\n"
             "• اضغط Ctrl + PrintScreen لالتقاط وحفظ الشاشة بالكامل فوراً.\n"
-            "• اضغط Win + PrintScreen لتحديد واقتصاص أي جزء تريده بدقة."
+            "• اضغط Win + PrintScreen لتحديد واقتصاص أي جزء تريده بدقة.\n"
+            "• استخدم أزرار تسجيل الفيديو 🎥 بالأعلى لتصوير الشاشة أو جزء محدد بصيغة MP4."
         )
         desc.setAlignment(Qt.AlignCenter)
-        desc.setStyleSheet("font-size: 14px; color: #94a3b8; line-height: 1.6; border: none;")
+        desc.setStyleSheet("font-size: 13px; color: #94a3b8; line-height: 1.6; border: none;")
         vbox.addWidget(desc)
 
         # Quick action row in empty state
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(12)
+        btn_row.setSpacing(10)
         btn_row.setAlignment(Qt.AlignCenter)
 
-        b1 = QPushButton("📸 تجربة التقاط كامل الشاشة الآن")
-        b1.setFixedHeight(40)
+        b1 = QPushButton("📸 التقاط الشاشة الآن")
+        b1.setFixedHeight(38)
         b1.setCursor(QCursor(Qt.PointingHandCursor))
         b1.setStyleSheet("""
             QPushButton {
@@ -837,8 +1034,8 @@ class ScreenshotsPageQt(QWidget):
                 color: white;
                 font-weight: bold;
                 border-radius: 9px;
-                padding: 0 18px;
-                font-size: 13px;
+                padding: 0 16px;
+                font-size: 12px;
                 border: none;
             }
             QPushButton:hover {
@@ -848,8 +1045,8 @@ class ScreenshotsPageQt(QWidget):
         b1.clicked.connect(self._trigger_full_capture)
         btn_row.addWidget(b1)
 
-        b2 = QPushButton("✂️ تجربة أداة القص والتحديد")
-        b2.setFixedHeight(40)
+        b2 = QPushButton("✂️ قص جزء محدد")
+        b2.setFixedHeight(38)
         b2.setCursor(QCursor(Qt.PointingHandCursor))
         b2.setStyleSheet("""
             QPushButton {
@@ -857,8 +1054,8 @@ class ScreenshotsPageQt(QWidget):
                 color: white;
                 font-weight: bold;
                 border-radius: 9px;
-                padding: 0 18px;
-                font-size: 13px;
+                padding: 0 16px;
+                font-size: 12px;
                 border: none;
             }
             QPushButton:hover {
@@ -868,12 +1065,38 @@ class ScreenshotsPageQt(QWidget):
         b2.clicked.connect(self._trigger_area_capture)
         btn_row.addWidget(b2)
 
+        b3 = QPushButton("🎥 تسجيل فيديو كامل")
+        b3.setFixedHeight(38)
+        b3.setCursor(QCursor(Qt.PointingHandCursor))
+        b3.setStyleSheet("""
+            QPushButton {
+                background-color: #dc2626;
+                color: white;
+                font-weight: bold;
+                border-radius: 9px;
+                padding: 0 16px;
+                font-size: 12px;
+                border: none;
+            }
+            QPushButton:hover {
+                background-color: #b91c1c;
+            }
+        """)
+        b3.clicked.connect(self._trigger_full_video_record)
+        btn_row.addWidget(b3)
+
         vbox.addLayout(btn_row)
         self.grid_layout.addWidget(empty_box, 0, 0, 1, 3)
 
     def _open_viewer(self, screenshot: Screenshot):
-        dlg = ScreenshotViewerDialog(screenshot, toast_callback=self.toast, parent=self)
-        dlg.exec()
+        if screenshot.is_video:
+            dlg = VideoPlayerDialog(screenshot, toast_callback=self.toast, parent=self)
+            dlg.exec()
+            self.refresh_list()
+        else:
+            dlg = ScreenshotViewerDialog(screenshot, toast_callback=self.toast, parent=self)
+            dlg.exec()
+            self.refresh_list()
 
     def _trigger_full_capture(self):
         if self.screenshot_service:
@@ -887,6 +1110,18 @@ class ScreenshotsPageQt(QWidget):
         else:
             self.toast("خدمة لقطات الشاشة غير متصلة!", True)
 
+    def _trigger_full_video_record(self):
+        if self.recording_service:
+            self.recording_service.start_full_screen_recording()
+        else:
+            self.toast("خدمة تسجيل الفيديو غير متصلة!", True)
+
+    def _trigger_area_video_record(self):
+        if self.recording_service:
+            self.recording_service.start_area_recording()
+        else:
+            self.toast("خدمة تسجيل الفيديو غير متصلة!", True)
+
     def _open_screenshots_folder(self):
         if self.screenshot_service:
             p = self.screenshot_service.get_save_dir()
@@ -896,5 +1131,7 @@ class ScreenshotsPageQt(QWidget):
                 self.toast(f"تعذر فتح المجلد: {e}", True)
 
     def _on_external_screenshot_saved(self, file_path: str, capture_type: str):
-        # Trigger UI refresh on new screenshot
+        self.refresh_list()
+
+    def _on_external_recording_saved(self, file_path: str, capture_type: str):
         self.refresh_list()

@@ -14,6 +14,8 @@ PLUGINS_DIR = DATA_DIR / "plugins"
 PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
 SCREENSHOTS_DIR = DATA_DIR / "screenshots"
 SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+RECORDINGS_DIR = DATA_DIR / "recordings"
+RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default configuration parameters
 DEFAULT_SETTINGS = {
@@ -46,6 +48,11 @@ DEFAULT_SETTINGS = {
     "screenshot_format": "png",
     "hotkey_full_screenshot": "<ctrl>+<print_screen>",
     "hotkey_area_screenshot": "<win>+<print_screen>",
+    "recordings_dir": str(RECORDINGS_DIR),
+    "video_record_audio": False,
+    "video_show_cursor": True,
+    "video_fps": 24,
+    "hotkey_video_record": "<ctrl>+<shift>+r",
 }
 
 def load_settings() -> dict:

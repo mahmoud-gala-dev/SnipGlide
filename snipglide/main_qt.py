@@ -8,6 +8,7 @@ from snipglide.database.connection import initialize_database
 from snipglide.engine.listener import ExpansionEngine
 from snipglide.services.clipboard_monitor import ClipboardMonitor
 from snipglide.services.screenshot_service import ScreenshotService
+from snipglide.services.video_recording_service import ScreenRecordingService
 from snipglide.ui_qt.main_window import MainWindowQt
 from snipglide.utils.helpers import download_and_load_arabic_font, ensure_sound_asset, ensure_camera_shutter_sound
 from snipglide.utils.logger import logger
@@ -16,6 +17,7 @@ class HotkeySignalBridge(QObject):
     quick_open_signal = Signal()
     capture_full_signal = Signal()
     capture_area_signal = Signal()
+    record_video_signal = Signal()
 
 class AppCoordinatorQt:
     def __init__(self, app: QApplication):
@@ -31,13 +33,20 @@ class AppCoordinatorQt:
         self.hotkey_bridge = HotkeySignalBridge()
         self.hotkey_bridge.quick_open_signal.connect(self.handle_quick_open)
 
-        # Initialize background screenshot service
+        # Initialize background screenshot and recording services
         self.screenshot_service = ScreenshotService(
             settings_provider=self.get_current_settings
         )
+        self.recording_service = ScreenRecordingService(
+            settings_provider=self.get_current_settings
+        )
+
         self.hotkey_bridge.capture_full_signal.connect(self.handle_capture_full)
         self.hotkey_bridge.capture_area_signal.connect(self.handle_capture_area)
+        self.hotkey_bridge.record_video_signal.connect(self.handle_record_video)
+
         self.screenshot_service.notification_requested.connect(self.handle_screenshot_notification)
+        self.recording_service.notification_requested.connect(self.handle_screenshot_notification)
 
         # Load Google Arabic Font and set globally
         self.font_family = download_and_load_arabic_font("Tajawal")
@@ -71,6 +80,13 @@ class AppCoordinatorQt:
         """Thread-safe handler for Ctrl + Alt + PrintScreen area snipping tool."""
         self.screenshot_service.start_area_capture()
 
+    def handle_record_video(self):
+        """Thread-safe handler for video recording hotkey."""
+        if self.recording_service.is_recording():
+            self.recording_service.stop_recording()
+        else:
+            self.recording_service.start_full_screen_recording()
+
     def handle_screenshot_notification(self, msg: str, is_error: bool):
         if self.window:
             if hasattr(self.window, "toast"):
@@ -78,7 +94,7 @@ class AppCoordinatorQt:
             if hasattr(self.window, "tray_icon") and self.window.tray_icon and not self.window.isVisible():
                 from PySide6.QtWidgets import QSystemTrayIcon
                 icon_type = QSystemTrayIcon.Warning if is_error else QSystemTrayIcon.Information
-                self.window.tray_icon.showMessage("SnipGlide - لقطة شاشة", msg, icon_type, 2500)
+                self.window.tray_icon.showMessage("SnipGlide - لقطة / تسجيل", msg, icon_type, 2500)
 
     def get_current_settings(self) -> dict:
         if self.window and hasattr(self.window, "settings"):
@@ -91,6 +107,7 @@ class AppCoordinatorQt:
             snippets_changed_callback=self.notify_snippets_changed,
             font_family=self.font_family,
             screenshot_service=self.screenshot_service,
+            recording_service=self.recording_service,
         )
         self.window.show()
         self.window.raise_()

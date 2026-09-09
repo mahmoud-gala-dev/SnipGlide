@@ -210,7 +210,7 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_starred ON chat_notes (is_starred)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_section ON chat_notes (section_id)")
         
-        # Create screenshots table
+        # Create screenshots & recordings table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS screenshots (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -222,9 +222,20 @@ def initialize_database():
                 file_size INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_favorite INTEGER DEFAULT 0,
-                note TEXT DEFAULT ''
+                note TEXT DEFAULT '',
+                duration REAL DEFAULT 0.0,
+                thumbnail_path TEXT DEFAULT ''
             )
         """)
+
+        # Migration: ensure duration and thumbnail_path exist if table already existed
+        cursor.execute("PRAGMA table_info(screenshots)")
+        shot_columns = [col[1] for col in cursor.fetchall()]
+        if "duration" not in shot_columns:
+            cursor.execute("ALTER TABLE screenshots ADD COLUMN duration REAL DEFAULT 0.0")
+        if "thumbnail_path" not in shot_columns:
+            cursor.execute("ALTER TABLE screenshots ADD COLUMN thumbnail_path TEXT DEFAULT ''")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_created ON screenshots (created_at DESC, id DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_favorite ON screenshots (is_favorite)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_type ON screenshots (capture_type)")

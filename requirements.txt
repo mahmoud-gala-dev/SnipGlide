@@ -12,3 +12,5 @@ arabic-reshaper>=3.0.0
 python-bidi>=0.4.2
 watchdog>=3.0.0
 darkdetect>=0.8.0
+opencv-python>=4.8.0
+mss>=9.0.0

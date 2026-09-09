@@ -12,16 +12,18 @@ def add_screenshot(
     width: int = 0,
     height: int = 0,
     file_size: int = 0,
-    note: str = ""
+    note: str = "",
+    duration: float = 0.0,
+    thumbnail_path: str = ""
 ) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO screenshots (file_path, filename, capture_type, width, height, file_size, note)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO screenshots (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (file_path, filename, capture_type, width, height, file_size, note),
+            (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path),
         )
         conn.commit()
         return cursor.lastrowid
@@ -42,8 +44,15 @@ def get_all_screenshots(
         params.extend([term, term])
 
     if capture_type and capture_type != "all":
-        query += " AND capture_type = ?"
-        params.append(capture_type)
+        if capture_type == "video":
+            query += " AND (capture_type LIKE 'video%' OR filename LIKE '%.mp4' OR filename LIKE '%.avi')"
+        elif capture_type == "full":
+            query += " AND capture_type = 'full'"
+        elif capture_type == "area":
+            query += " AND capture_type = 'area'"
+        else:
+            query += " AND capture_type = ?"
+            params.append(capture_type)
 
     if favorites_only:
         query += " AND is_favorite = 1"
@@ -58,6 +67,9 @@ def get_all_screenshots(
 
     screenshots = []
     for r in rows:
+        keys = r.keys()
+        dur = r["duration"] if "duration" in keys and r["duration"] is not None else 0.0
+        thumb = r["thumbnail_path"] if "thumbnail_path" in keys and r["thumbnail_path"] is not None else ""
         screenshots.append(
             Screenshot(
                 id=r["id"],
@@ -70,6 +82,8 @@ def get_all_screenshots(
                 created_at=r["created_at"],
                 is_favorite=bool(r["is_favorite"]),
                 note=r["note"] or "",
+                duration=float(dur),
+                thumbnail_path=thumb,
             )
         )
     return screenshots
@@ -81,6 +95,9 @@ def get_screenshot_by_id(screenshot_id: int) -> Optional[Screenshot]:
         r = cursor.fetchone()
         if not r:
             return None
+        keys = r.keys()
+        dur = r["duration"] if "duration" in keys and r["duration"] is not None else 0.0
+        thumb = r["thumbnail_path"] if "thumbnail_path" in keys and r["thumbnail_path"] is not None else ""
         return Screenshot(
             id=r["id"],
             file_path=r["file_path"],
@@ -92,6 +109,8 @@ def get_screenshot_by_id(screenshot_id: int) -> Optional[Screenshot]:
             created_at=r["created_at"],
             is_favorite=bool(r["is_favorite"]),
             note=r["note"] or "",
+            duration=float(dur),
+            thumbnail_path=thumb,
         )
 
 def toggle_favorite_screenshot(screenshot_id: int) -> bool:
@@ -109,21 +128,31 @@ def toggle_favorite_screenshot(screenshot_id: int) -> bool:
 def delete_screenshot(screenshot_id: int, delete_file: bool = True) -> bool:
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("SELECT file_path FROM screenshots WHERE id = ?", (screenshot_id,))
+        cursor.execute("SELECT file_path, thumbnail_path FROM screenshots WHERE id = ?", (screenshot_id,))
         row = cursor.fetchone()
         if not row:
             return False
         file_path = row["file_path"]
+        keys = row.keys()
+        thumbnail_path = row["thumbnail_path"] if "thumbnail_path" in keys else None
 
         cursor.execute("DELETE FROM screenshots WHERE id = ?", (screenshot_id,))
         conn.commit()
 
-    if delete_file and file_path and os.path.exists(file_path):
-        try:
-            os.remove(file_path)
-            logger.info(f"Deleted screenshot file: {file_path}")
-        except Exception as e:
-            logger.warning(f"Failed to delete screenshot file from disk: {e}")
+    if delete_file:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                logger.info(f"Deleted screenshot/video file: {file_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete file from disk: {e}")
+
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            try:
+                os.remove(thumbnail_path)
+                logger.info(f"Deleted thumbnail file: {thumbnail_path}")
+            except Exception as e:
+                logger.warning(f"Failed to delete thumbnail from disk: {e}")
 
     return True
 
