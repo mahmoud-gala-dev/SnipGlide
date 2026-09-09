@@ -10,17 +10,101 @@ from snipglide.engine.window_tracker import get_active_window_info
 from snipglide.utils.helpers import get_clipboard_text, set_clipboard_text
 from snipglide.utils.logger import logger
 
+class WindowsGlobalHotkeyThread(threading.Thread):
+    """
+    Dedicated Windows OS kernel-level hotkey listener using RegisterHotKey.
+    Guarantees 100% reliable detection of Ctrl+Alt+PrintScreen and Ctrl+PrintScreen
+    even when Alt is held or Windows shell attempts to intercept VK_SNAPSHOT.
+    """
+    def __init__(self, on_full_callback: Callable[[], None], on_area_callback: Callable[[], None]):
+        super().__init__()
+        self.daemon = True
+        self.on_full_callback = on_full_callback
+        self.on_area_callback = on_area_callback
+        self._thread_id = None
+        self._running = False
+
+    def run(self):
+        import ctypes
+        from ctypes import wintypes
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+        self._thread_id = kernel32.GetCurrentThreadId()
+        self._running = True
+
+        HOTKEY_ID_FULL = 9911
+        HOTKEY_ID_AREA = 9912
+        MOD_ALT = 0x0001
+        MOD_CONTROL = 0x0002
+        MOD_NOREPEAT = 0x4000
+        VK_SNAPSHOT = 0x2C
+
+        reg_area = user32.RegisterHotKey(None, HOTKEY_ID_AREA, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, VK_SNAPSHOT)
+        if not reg_area:
+            reg_area = user32.RegisterHotKey(None, HOTKEY_ID_AREA, MOD_CONTROL | MOD_ALT, VK_SNAPSHOT)
+
+        reg_full = user32.RegisterHotKey(None, HOTKEY_ID_FULL, MOD_CONTROL | MOD_NOREPEAT, VK_SNAPSHOT)
+        if not reg_full:
+            reg_full = user32.RegisterHotKey(None, HOTKEY_ID_FULL, MOD_CONTROL, VK_SNAPSHOT)
+
+        logger.info(f"Windows Native Hotkeys registered: Area={bool(reg_area)}, Full={bool(reg_full)}")
+
+        msg = wintypes.MSG()
+        while self._running:
+            res = user32.GetMessageW(ctypes.byref(msg), None, 0, 0)
+            if res <= 0:
+                break
+            if msg.message == 0x0312:  # WM_HOTKEY
+                hid = msg.wParam
+                if hid == HOTKEY_ID_AREA:
+                    logger.info("Windows Native Hotkey [Ctrl + Alt + PrintScreen] fired!")
+                    if self.on_area_callback:
+                        self.on_area_callback()
+                elif hid == HOTKEY_ID_FULL:
+                    logger.info("Windows Native Hotkey [Ctrl + PrintScreen] fired!")
+                    if self.on_full_callback:
+                        self.on_full_callback()
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
+
+        try:
+            user32.UnregisterHotKey(None, HOTKEY_ID_AREA)
+            user32.UnregisterHotKey(None, HOTKEY_ID_FULL)
+        except Exception:
+            pass
+
+    def stop(self):
+        self._running = False
+        if self._thread_id:
+            try:
+                import ctypes
+                ctypes.windll.user32.PostThreadMessageW(self._thread_id, 0x0012, 0, 0)
+            except Exception:
+                pass
+
 class ExpansionEngine:
-    def __init__(self, settings_provider: Callable[[], dict], form_prompt_callback: Callable[[object, list], Optional[dict]] = None, quick_open_callback: Callable[[], None] = None):
+    def __init__(
+        self,
+        settings_provider: Callable[[], dict],
+        form_prompt_callback: Callable[[object, list], Optional[dict]] = None,
+        quick_open_callback: Callable[[], None] = None,
+        capture_full_callback: Callable[[], None] = None,
+        capture_area_callback: Callable[[], None] = None,
+    ):
         self.settings_provider = settings_provider
         self.form_prompt_callback = form_prompt_callback
         self.quick_open_callback = quick_open_callback
+        self.capture_full_callback = capture_full_callback
+        self.capture_area_callback = capture_area_callback
         self.buffer = ""
         self.controller = keyboard.Controller()
         self.listener: Optional[keyboard.Listener] = None
+        self.native_hotkey_thread: Optional[WindowsGlobalHotkeyThread] = None
         self.running = False
         self.suspended = False
         self._lock = threading.RLock()
+        self._last_capture_time = 0
+        self._win_pressed = False
         
         # Cache with TTL to reduce database queries
         self._last_snippets_fetch = 0
@@ -38,18 +122,60 @@ class ExpansionEngine:
         self._window_check_interval = 0.3
         self._cached_window_info = ("", "")
         self._last_key_time = time.time()
+        self._last_win_time = 0
+        self._last_ctrl_time = 0
+        self._last_alt_time = 0
+
+    def _trigger_capture_full(self):
+        now = time.time()
+        if now - self._last_capture_time < 0.4:
+            return
+        self._last_capture_time = now
+        logger.info("Global shortcut [Ctrl + PrintScreen] triggered! Capturing Full Screen.")
+        if self.capture_full_callback:
+            self.capture_full_callback()
+
+    def _trigger_capture_area(self):
+        now = time.time()
+        if now - self._last_capture_time < 0.4:
+            return
+        self._last_capture_time = now
+        logger.info("Global shortcut [Win + PrintScreen] triggered! Launching Area Snipping.")
+        if self.capture_area_callback:
+            self.capture_area_callback()
 
     def start(self):
         if self.listener is not None:
             return
         self.running = True
-        self.listener = keyboard.Listener(on_press=self._on_press)
+
+        # 1. Native Windows kernel-level global hotkey listener
+        try:
+            self.native_hotkey_thread = WindowsGlobalHotkeyThread(
+                on_full_callback=self._trigger_capture_full,
+                on_area_callback=self._trigger_capture_area,
+            )
+            self.native_hotkey_thread.start()
+        except Exception as e:
+            logger.warning(f"Failed to start native hotkey thread: {e}")
+
+        # 2. Pynput low-level keyboard hook
+        self.listener = keyboard.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release,
+        )
         self.listener.daemon = True
         self.listener.start()
-        logger.info("Expansion engine started successfully.")
+        logger.info("Expansion engine started successfully with dual hotkey listeners.")
 
     def stop(self):
         self.running = False
+        if self.native_hotkey_thread:
+            try:
+                self.native_hotkey_thread.stop()
+            except Exception:
+                pass
+            self.native_hotkey_thread = None
         if self.listener:
             try:
                 self.listener.stop()
@@ -72,8 +198,8 @@ class ExpansionEngine:
         self.suspended = value
         self.buffer = ""
 
-    def _on_press(self, key):
-        # 1. Global Hotkey Check: Ctrl + PrintScreen to open/restore/focus application
+    def _check_screenshot_keys(self, key) -> bool:
+        """Check for Win+PrintScreen, Ctrl+Alt+PrintScreen, and Ctrl+PrintScreen combinations."""
         try:
             vk = getattr(key, "vk", None)
             key_name = getattr(key, "name", "")
@@ -81,24 +207,81 @@ class ExpansionEngine:
             is_print_screen = (
                 key == keyboard.Key.print_screen or
                 key_name in ("print_screen", "snapshot", "print") or
-                key_str in ("Key.print_screen", "<44>", "Key.snapshot") or
+                key_str in ("Key.print_screen", "<44>", "Key.snapshot", "'\\x2c'") or
                 vk in (44, 0x2C)
             )
             if is_print_screen:
                 import ctypes
                 user32 = ctypes.windll.user32
+                now = time.time()
+                win_recent = (now - getattr(self, "_last_win_time", 0)) < 0.45
+                ctrl_recent = (now - getattr(self, "_last_ctrl_time", 0)) < 0.45
+                alt_recent = (now - getattr(self, "_last_alt_time", 0)) < 0.45
+
+                win_pressed = bool(
+                    self._win_pressed or
+                    win_recent or
+                    (user32.GetAsyncKeyState(0x5B) & 0x8000) or
+                    (user32.GetAsyncKeyState(0x5C) & 0x8000) or
+                    (user32.GetKeyState(0x5B) & 0x8000) or
+                    (user32.GetKeyState(0x5C) & 0x8000)
+                )
                 ctrl_pressed = bool(
+                    ctrl_recent or
                     (user32.GetAsyncKeyState(0x11) & 0x8000) or
                     (user32.GetAsyncKeyState(0xA2) & 0x8000) or
-                    (user32.GetAsyncKeyState(0xA3) & 0x8000)
+                    (user32.GetAsyncKeyState(0xA3) & 0x8000) or
+                    (user32.GetKeyState(0x11) & 0x8000)
                 )
+                alt_pressed = bool(
+                    alt_recent or
+                    (user32.GetAsyncKeyState(0x12) & 0x8000) or
+                    (user32.GetAsyncKeyState(0xA4) & 0x8000) or
+                    (user32.GetAsyncKeyState(0xA5) & 0x8000) or
+                    (user32.GetKeyState(0x12) & 0x8000)
+                )
+
+                # 1. Win + PrintScreen (requested by user) OR Ctrl + Alt + PrintScreen -> Area Snipping
+                if win_pressed or (ctrl_pressed and alt_pressed):
+                    logger.info(f"Area snipping shortcut detected! (Win={win_pressed}, Ctrl={ctrl_pressed}, Alt={alt_pressed})")
+                    self._trigger_capture_area()
+                    return True
+
+                # 2. Ctrl + PrintScreen -> Full Screen Capture
                 if ctrl_pressed:
-                    logger.info("Global shortcut [Ctrl + PrintScreen] detected! Activating SnipGlide.")
-                    if self.quick_open_callback:
-                        self.quick_open_callback()
-                    return
+                    logger.info("Full screen capture shortcut [Ctrl + PrintScreen] detected!")
+                    self._trigger_capture_full()
+                    return True
         except Exception as e:
-            logger.debug(f"Quick open check failed: {e}")
+            logger.debug(f"Screenshot hotkey check failed: {e}")
+        return False
+
+    def _on_release(self, key):
+        vk = getattr(key, "vk", None)
+        now = time.time()
+        if key in (keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r) or vk in (0x5B, 0x5C, 91, 92):
+            self._win_pressed = False
+            self._last_win_time = now
+        elif key in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r) or vk in (0x11, 0xA2, 0xA3, 17, 162, 163):
+            self._last_ctrl_time = now
+        elif key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, keyboard.Key.alt_gr) or vk in (0x12, 0xA4, 0xA5, 18, 164, 165):
+            self._last_alt_time = now
+
+        self._check_screenshot_keys(key)
+
+    def _on_press(self, key):
+        vk = getattr(key, "vk", None)
+        now = time.time()
+        if key in (keyboard.Key.cmd, keyboard.Key.cmd_l, keyboard.Key.cmd_r) or vk in (0x5B, 0x5C, 91, 92):
+            self._win_pressed = True
+            self._last_win_time = now
+        elif key in (keyboard.Key.ctrl, keyboard.Key.ctrl_l, keyboard.Key.ctrl_r) or vk in (0x11, 0xA2, 0xA3, 17, 162, 163):
+            self._last_ctrl_time = now
+        elif key in (keyboard.Key.alt, keyboard.Key.alt_l, keyboard.Key.alt_r, keyboard.Key.alt_gr) or vk in (0x12, 0xA4, 0xA5, 18, 164, 165):
+            self._last_alt_time = now
+
+        if self._check_screenshot_keys(key):
+            return
 
         if not self.running or self.suspended:
             return

@@ -118,11 +118,13 @@ class DashboardQt(QWidget):
 
         btn_snip = self._create_hub_button("➕ اختصار جديد", "#25D366", lambda: self._navigate("Snippets", new_snip=True))
         btn_chat = self._create_hub_button("💬 كتابة في الشات", "#38bdf8", lambda: self._navigate("ChatNotes"))
+        btn_shots = self._create_hub_button("📸 لقطات الشاشة", "#8b5cf6", lambda: self._navigate("Screenshots"))
         btn_cmd = self._create_hub_button("⌨️ لوحة الأوامر (Ctrl+K)", "#a855f7", self._open_cmd)
         btn_paste = self._create_hub_button("🚀 شريط اللصق (Alt+Space)", "#f59e0b", self._open_paste)
 
         hub_layout.addWidget(btn_snip)
         hub_layout.addWidget(btn_chat)
+        hub_layout.addWidget(btn_shots)
         hub_layout.addWidget(btn_cmd)
         hub_layout.addWidget(btn_paste)
         hub_layout.addStretch()

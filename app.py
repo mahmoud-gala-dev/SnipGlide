@@ -21,6 +21,11 @@ if __name__ == "__main__":
         run_app()
     except Exception as e:
         import traceback
-        print(f"\n[ERROR] Failed to start SnipGlide: {e}")
-        traceback.print_exc()
-        input("\nPress Enter to exit...")
+        err_msg = traceback.format_exc()
+        try:
+            with open(os.path.join(BASE_DIR, "crash.log"), "w", encoding="utf-8") as f:
+                f.write(err_msg)
+        except Exception:
+            pass
+        print(f"\n[ERROR] Failed to start SnipGlide: {e}\n{err_msg}")
+

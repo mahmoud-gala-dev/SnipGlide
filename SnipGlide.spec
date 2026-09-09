@@ -4,8 +4,6 @@ from PyInstaller.utils.hooks import collect_data_files
 datas = [
     ('snipglide/assets', 'snipglide/assets'),
 ]
-datas += collect_data_files('customtkinter')
-
 
 a = Analysis(
     ['app.py'],
@@ -22,11 +20,17 @@ a = Analysis(
         'pygments',
         'openpyxl',
         'yaml',
+        'sounddevice',
+        'soundfile',
+        'numpy',
+        'PySide6.QtCore',
+        'PySide6.QtGui',
+        'PySide6.QtWidgets',
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['tkinter', 'customtkinter'],
     noarchive=False,
     optimize=0,
 )

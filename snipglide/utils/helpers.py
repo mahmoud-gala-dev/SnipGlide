@@ -318,3 +318,45 @@ def ensure_sound_asset() -> Path:
     return sound_path
 
 
+def ensure_camera_shutter_sound() -> Path:
+    """Ensure that a crisp mechanical camera shutter WAV asset exists, generating it procedurally if needed."""
+    import wave
+    import struct
+    import math
+
+    assets_dir = Path(__file__).resolve().parent.parent / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    sound_path = assets_dir / "shutter_sound.wav"
+
+    if sound_path.exists() and sound_path.stat().st_size > 500:
+        return sound_path
+
+    try:
+        sample_rate = 44100
+        duration = 0.14  # 140ms double-click shutter sound
+        num_samples = int(sample_rate * duration)
+
+        with wave.open(str(sound_path), "w") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+
+            for i in range(num_samples):
+                t = i / sample_rate
+                val = 0.0
+                if t < 0.045:
+                    t1 = t
+                    env1 = math.exp(-120 * t1)
+                    val = math.sin(2 * math.pi * 1200 * t1) * env1 * 0.8
+                elif 0.065 <= t < 0.13:
+                    t2 = t - 0.065
+                    env2 = math.exp(-90 * t2)
+                    val = (math.sin(2 * math.pi * 1600 * t2) * 0.7 + math.sin(2 * math.pi * 800 * t2) * 0.3) * env2
+
+                int_sample = int(val * 32767 * 0.35)
+                int_sample = max(-32768, min(32767, int_sample))
+                wav_file.writeframes(struct.pack("<h", int_sample))
+    except Exception:
+        pass
+
+    return sound_path

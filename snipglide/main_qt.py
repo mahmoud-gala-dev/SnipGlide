@@ -7,12 +7,15 @@ from snipglide.core.config import APP_NAME, load_settings, save_settings
 from snipglide.database.connection import initialize_database
 from snipglide.engine.listener import ExpansionEngine
 from snipglide.services.clipboard_monitor import ClipboardMonitor
+from snipglide.services.screenshot_service import ScreenshotService
 from snipglide.ui_qt.main_window import MainWindowQt
-from snipglide.utils.helpers import download_and_load_arabic_font, ensure_sound_asset
+from snipglide.utils.helpers import download_and_load_arabic_font, ensure_sound_asset, ensure_camera_shutter_sound
 from snipglide.utils.logger import logger
 
 class HotkeySignalBridge(QObject):
     quick_open_signal = Signal()
+    capture_full_signal = Signal()
+    capture_area_signal = Signal()
 
 class AppCoordinatorQt:
     def __init__(self, app: QApplication):
@@ -22,10 +25,19 @@ class AppCoordinatorQt:
         self.window = None
 
         ensure_sound_asset()
+        ensure_camera_shutter_sound()
 
         # Thread-safe Qt signal bridge for global hotkeys
         self.hotkey_bridge = HotkeySignalBridge()
         self.hotkey_bridge.quick_open_signal.connect(self.handle_quick_open)
+
+        # Initialize background screenshot service
+        self.screenshot_service = ScreenshotService(
+            settings_provider=self.get_current_settings
+        )
+        self.hotkey_bridge.capture_full_signal.connect(self.handle_capture_full)
+        self.hotkey_bridge.capture_area_signal.connect(self.handle_capture_area)
+        self.screenshot_service.notification_requested.connect(self.handle_screenshot_notification)
 
         # Load Google Arabic Font and set globally
         self.font_family = download_and_load_arabic_font("Tajawal")
@@ -35,6 +47,8 @@ class AppCoordinatorQt:
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
             quick_open_callback=self.hotkey_bridge.quick_open_signal.emit,
+            capture_full_callback=self.hotkey_bridge.capture_full_signal.emit,
+            capture_area_callback=self.hotkey_bridge.capture_area_signal.emit,
         )
         self.engine.start()
 
@@ -49,6 +63,23 @@ class AppCoordinatorQt:
         if self.window:
             self.window.show_and_activate()
 
+    def handle_capture_full(self):
+        """Thread-safe handler for Ctrl + PrintScreen full screen capture."""
+        self.screenshot_service.capture_full_screen()
+
+    def handle_capture_area(self):
+        """Thread-safe handler for Ctrl + Alt + PrintScreen area snipping tool."""
+        self.screenshot_service.start_area_capture()
+
+    def handle_screenshot_notification(self, msg: str, is_error: bool):
+        if self.window:
+            if hasattr(self.window, "toast"):
+                self.window.toast(msg, is_error)
+            if hasattr(self.window, "tray_icon") and self.window.tray_icon and not self.window.isVisible():
+                from PySide6.QtWidgets import QSystemTrayIcon
+                icon_type = QSystemTrayIcon.Warning if is_error else QSystemTrayIcon.Information
+                self.window.tray_icon.showMessage("SnipGlide - لقطة شاشة", msg, icon_type, 2500)
+
     def get_current_settings(self) -> dict:
         if self.window and hasattr(self.window, "settings"):
             return self.window.settings
@@ -59,6 +90,7 @@ class AppCoordinatorQt:
             engine_toggle_callback=self.toggle_engine,
             snippets_changed_callback=self.notify_snippets_changed,
             font_family=self.font_family,
+            screenshot_service=self.screenshot_service,
         )
         self.window.show()
         self.window.raise_()
@@ -92,7 +124,8 @@ def run_app():
             import ctypes
             hwnd = ctypes.windll.user32.FindWindowW(None, f"{APP_NAME} - Professional Edition")
             if hwnd:
-                ctypes.windll.user32.ShowWindow(hwnd, 9)
+                ctypes.windll.user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+                ctypes.windll.user32.ShowWindow(hwnd, 5)  # SW_SHOW
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
         except Exception:
             pass

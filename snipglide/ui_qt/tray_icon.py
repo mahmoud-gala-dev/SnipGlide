@@ -45,8 +45,20 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
         """)
 
         # Open Window
-        act_open = menu.addAction("🟢 فتح SnipGlide Pro (Ctrl + PrintScreen)")
+        act_open = menu.addAction("🟢 فتح SnipGlide Pro")
         act_open.triggered.connect(self._show_window)
+
+        # Screenshots Quick Actions
+        act_shot_full = menu.addAction("📸 التقاط الشاشة كاملة (Ctrl + Print)")
+        act_shot_full.triggered.connect(self._capture_full_screen)
+
+        act_shot_area = menu.addAction("✂️ تحديد جزء من الشاشة (Win + Print)")
+        act_shot_area.triggered.connect(self._start_area_capture)
+
+        act_open_shots = menu.addAction("🖼️ استعراض لقطات الشاشة")
+        act_open_shots.triggered.connect(self._open_screenshots_page)
+
+        menu.addSeparator()
 
         act_paste_bar = menu.addAction("⚡ شريط اللصق السريع (Alt+Space)")
         act_paste_bar.triggered.connect(self._open_paste_bar)
@@ -118,6 +130,20 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
     def _toggle_chat_head(self):
         if self.main_window and hasattr(self.main_window, "toggle_floating_chat_head"):
             self.main_window.toggle_floating_chat_head()
+
+    def _capture_full_screen(self):
+        if self.main_window and hasattr(self.main_window, "_capture_full_screen"):
+            self.main_window._capture_full_screen()
+
+    def _start_area_capture(self):
+        if self.main_window and hasattr(self.main_window, "_start_area_capture"):
+            self.main_window._start_area_capture()
+
+    def _open_screenshots_page(self):
+        if self.main_window:
+            self.main_window.show_and_activate()
+            if hasattr(self.main_window, "sidebar"):
+                self.main_window.sidebar.select_page("Screenshots")
 
     def _copy_text(self, text: str):
         clipboard = QApplication.clipboard()

@@ -12,6 +12,8 @@ BACKUP_DIR = DATA_DIR / "backups"
 BACKUP_DIR.mkdir(parents=True, exist_ok=True)
 PLUGINS_DIR = DATA_DIR / "plugins"
 PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
+SCREENSHOTS_DIR = DATA_DIR / "screenshots"
+SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Default configuration parameters
 DEFAULT_SETTINGS = {
@@ -36,7 +38,14 @@ DEFAULT_SETTINGS = {
     "clipboard_poll_interval": 3.0,
     "clipboard_max_chars": 10000,
     "clipboard_skip_private_windows": True,
-    "quick_open_hotkey": "<ctrl>+<print_screen>",
+    "quick_open_hotkey": "<ctrl>+<shift>+<f12>",
+    "screenshots_dir": str(SCREENSHOTS_DIR),
+    "screenshot_copy_to_clipboard": True,
+    "screenshot_play_sound": True,
+    "screenshot_show_notification": True,
+    "screenshot_format": "png",
+    "hotkey_full_screenshot": "<ctrl>+<print_screen>",
+    "hotkey_area_screenshot": "<win>+<print_screen>",
 }
 
 def load_settings() -> dict:

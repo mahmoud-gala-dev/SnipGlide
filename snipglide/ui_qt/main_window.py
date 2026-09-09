@@ -22,16 +22,18 @@ from snipglide.ui_qt.email_templates_dialog import EmailTemplatesDialogQt
 from snipglide.ui_qt.floating_chat_head import FloatingChatHead
 from snipglide.ui_qt.web_dev_dialog import WebDevDialogQt
 from snipglide.ui_qt.notepad_page import NotepadPageQt
+from snipglide.ui_qt.screenshots_page import ScreenshotsPageQt
 from snipglide.services.exporter_importer import (
     export_data_to_json, import_data_from_json, export_snippets_to_csv
 )
 from snipglide.core.config import load_settings, save_settings, APP_NAME, get_arabic_font_family
 
 class MainWindowQt(QMainWindow):
-    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None):
+    def __init__(self, engine_toggle_callback=None, snippets_changed_callback=None, font_family=None, screenshot_service=None):
         super().__init__()
         self.engine_toggle_callback = engine_toggle_callback
         self.snippets_changed_callback = snippets_changed_callback
+        self.screenshot_service = screenshot_service
         self.settings = load_settings()
         self.font_family = font_family or get_arabic_font_family()
 
@@ -113,12 +115,21 @@ class MainWindowQt(QMainWindow):
         self.pages["Notepad"] = self.notepad_page
         self.stack.addWidget(self.notepad_page)
 
-        # 6. Search
+        # 6. Screenshots
+        self.screenshots_page = ScreenshotsPageQt(
+            screenshot_service=self.screenshot_service,
+            toast_callback=self.toast,
+            parent=self
+        )
+        self.pages["Screenshots"] = self.screenshots_page
+        self.stack.addWidget(self.screenshots_page)
+
+        # 7. Search
         self.search_page = SearchPageQt(toast_callback=self.toast, parent=self)
         self.pages["Search"] = self.search_page
         self.stack.addWidget(self.search_page)
 
-        # 6. Clipboard
+        # 8. Clipboard
         self.clip_page = ClipboardPageQt(toast_callback=self.toast, parent=self)
         self.pages["Clipboard"] = self.clip_page
         self.stack.addWidget(self.clip_page)
@@ -156,10 +167,12 @@ class MainWindowQt(QMainWindow):
         self.shortcut_esc = QShortcut(QKeySequence(Qt.Key_Escape), self)
         self.shortcut_esc.activated.connect(self._on_esc_pressed)
 
-        # Ctrl+PrintScreen -> Quick Open/Focus
+        # Screenshots Shortcuts within Window
         try:
-            self.shortcut_quick_open = QShortcut(QKeySequence("Ctrl+Print"), self)
-            self.shortcut_quick_open.activated.connect(self.show_and_activate)
+            self.shortcut_shot_full = QShortcut(QKeySequence("Ctrl+Print"), self)
+            self.shortcut_shot_full.activated.connect(self._capture_full_screen)
+            self.shortcut_shot_area = QShortcut(QKeySequence("Ctrl+Alt+Print"), self)
+            self.shortcut_shot_area.activated.connect(self._start_area_capture)
         except Exception:
             pass
 
@@ -217,7 +230,7 @@ class MainWindowQt(QMainWindow):
         except Exception:
             pass
 
-        self.toast("⚡ تم استعادة وفتح SnipGlide عبر (Ctrl + PrintScreen)", False)
+        self.toast("⚡ تم استعادة وفتح نافذة SnipGlide", False)
 
     def open_command_palette(self):
         palette = CommandPaletteQt(self)
@@ -256,7 +269,11 @@ class MainWindowQt(QMainWindow):
         if kind == "nav":
             self.sidebar.select_page(str(data))
         elif kind == "action":
-            if data == "new_snippet":
+            if data == "capture_full":
+                self._capture_full_screen()
+            elif data == "capture_area":
+                self._start_area_capture()
+            elif data == "new_snippet":
                 self.sidebar.select_page("Snippets")
                 self.snippets_page.new_snippet()
             elif data == "new_note":
@@ -319,6 +336,16 @@ class MainWindowQt(QMainWindow):
                 self.chat_page.refresh_chat(scroll_to_bottom=False)
             elif page_id == "Clipboard":
                 self.clip_page.refresh_history()
+            elif page_id == "Screenshots":
+                self.screenshots_page.refresh_list()
+
+    def _capture_full_screen(self):
+        if self.screenshot_service:
+            self.screenshot_service.capture_full_screen()
+
+    def _start_area_capture(self):
+        if self.screenshot_service:
+            self.screenshot_service.start_area_capture()
 
     def toast(self, message: str, error: bool = False):
         bg = "#dc2626" if error else "#16a34a"
@@ -384,12 +411,15 @@ class MainWindowQt(QMainWindow):
         nav_note = nav_menu.addAction("📝 الملاحظات العادية (Notes)")
         nav_chat = nav_menu.addAction("💬 شات نوت الواتساب (Chat Notes)")
         nav_notepad = nav_menu.addAction("🗒️ مفكرة ويندوز (Notepad)")
+        nav_shots = nav_menu.addAction("📸 لقطات وقص الشاشة (Screenshots)")
         nav_search = nav_menu.addAction("🔍 البحث الموحد الشامل (Search)")
         nav_clip = nav_menu.addAction("📋 سجل الحافظة (Clipboard)")
 
         # ── 2. Quick Actions Submenu ──
         actions_menu = menu.addMenu("⚡ إجراءات سريعة")
         actions_menu.setStyleSheet(menu_style)
+        act_shot_full = actions_menu.addAction("📸 التقاط الشاشة بالكامل (Ctrl+Print)")
+        act_shot_area = actions_menu.addAction("✂️ تحديد جزء من الشاشة (Win+Print)")
         act_new_snip = actions_menu.addAction("➕ إنشاء اختصار جديد")
         act_new_note = actions_menu.addAction("📝 كتابة ملاحظة جديدة")
         act_new_notepad = actions_menu.addAction("🗒️ فتح مستند جديد في المفكرة")
@@ -432,10 +462,16 @@ class MainWindowQt(QMainWindow):
             self.sidebar.select_page("ChatNotes")
         elif action == nav_notepad:
             self.sidebar.select_page("Notepad")
+        elif action == nav_shots:
+            self.sidebar.select_page("Screenshots")
         elif action == nav_search:
             self.sidebar.select_page("Search")
         elif action == nav_clip:
             self.sidebar.select_page("Clipboard")
+        elif action == act_shot_full:
+            self._capture_full_screen()
+        elif action == act_shot_area:
+            self._start_area_capture()
         elif action == act_new_snip:
             self.sidebar.select_page("Snippets")
             self.snippets_page.new_snippet()

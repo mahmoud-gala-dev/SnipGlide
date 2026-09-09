@@ -210,5 +210,24 @@ def initialize_database():
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_starred ON chat_notes (is_starred)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_chat_notes_section ON chat_notes (section_id)")
         
+        # Create screenshots table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS screenshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                file_path TEXT NOT NULL UNIQUE,
+                filename TEXT NOT NULL,
+                capture_type TEXT DEFAULT 'full',
+                width INTEGER DEFAULT 0,
+                height INTEGER DEFAULT 0,
+                file_size INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_favorite INTEGER DEFAULT 0,
+                note TEXT DEFAULT ''
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_created ON screenshots (created_at DESC, id DESC)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_favorite ON screenshots (is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_type ON screenshots (capture_type)")
+
         conn.commit()
 
