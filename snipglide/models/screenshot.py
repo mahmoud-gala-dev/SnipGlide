@@ -16,6 +16,7 @@ class Screenshot:
     note: str = ""
     duration: float = 0.0
     thumbnail_path: str = ""
+    folder: str = "العامة"
 
     @property
     def is_video(self) -> bool:

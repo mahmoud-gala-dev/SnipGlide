@@ -224,21 +224,45 @@ def initialize_database():
                 is_favorite INTEGER DEFAULT 0,
                 note TEXT DEFAULT '',
                 duration REAL DEFAULT 0.0,
-                thumbnail_path TEXT DEFAULT ''
+                thumbnail_path TEXT DEFAULT '',
+                folder TEXT DEFAULT 'العامة'
             )
         """)
 
-        # Migration: ensure duration and thumbnail_path exist if table already existed
+        # Migration: ensure duration, thumbnail_path, and folder exist if table already existed
         cursor.execute("PRAGMA table_info(screenshots)")
         shot_columns = [col[1] for col in cursor.fetchall()]
         if "duration" not in shot_columns:
             cursor.execute("ALTER TABLE screenshots ADD COLUMN duration REAL DEFAULT 0.0")
         if "thumbnail_path" not in shot_columns:
             cursor.execute("ALTER TABLE screenshots ADD COLUMN thumbnail_path TEXT DEFAULT ''")
+        if "folder" not in shot_columns:
+            cursor.execute("ALTER TABLE screenshots ADD COLUMN folder TEXT DEFAULT 'العامة'")
 
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_created ON screenshots (created_at DESC, id DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_favorite ON screenshots (is_favorite)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_type ON screenshots (capture_type)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_screenshots_folder ON screenshots (folder)")
+
+        # Create screenshot folders table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS screenshot_folders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                color TEXT DEFAULT '#3b82f6',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        cursor.execute("SELECT COUNT(*) FROM screenshot_folders")
+        if cursor.fetchone()[0] == 0:
+            default_flds = [
+                ("العامة", "#3b82f6"),
+                ("العمل", "#10b981"),
+                ("مشاريع", "#f59e0b"),
+                ("شروحات", "#8b5cf6")
+            ]
+            cursor.executemany("INSERT INTO screenshot_folders (name, color) VALUES (?, ?)", default_flds)
 
         conn.commit()
 

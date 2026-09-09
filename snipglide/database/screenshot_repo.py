@@ -14,16 +14,17 @@ def add_screenshot(
     file_size: int = 0,
     note: str = "",
     duration: float = 0.0,
-    thumbnail_path: str = ""
+    thumbnail_path: str = "",
+    folder: str = "العامة"
 ) -> int:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute(
             """
-            INSERT INTO screenshots (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO screenshots (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path, folder)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path),
+            (file_path, filename, capture_type, width, height, file_size, note, duration, thumbnail_path, folder),
         )
         conn.commit()
         return cursor.lastrowid
@@ -32,6 +33,7 @@ def get_all_screenshots(
     search_query: str = "",
     capture_type: Optional[str] = None,
     favorites_only: bool = False,
+    folder: Optional[str] = None,
     limit: int = 500,
     offset: int = 0
 ) -> List[Screenshot]:
@@ -57,6 +59,10 @@ def get_all_screenshots(
     if favorites_only:
         query += " AND is_favorite = 1"
 
+    if folder and folder not in ("all", "كافة الملفات"):
+        query += " AND folder = ?"
+        params.append(folder)
+
     query += " ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?"
     params.extend([limit, offset])
 
@@ -70,6 +76,7 @@ def get_all_screenshots(
         keys = r.keys()
         dur = r["duration"] if "duration" in keys and r["duration"] is not None else 0.0
         thumb = r["thumbnail_path"] if "thumbnail_path" in keys and r["thumbnail_path"] is not None else ""
+        fld = r["folder"] if "folder" in keys and r["folder"] else "العامة"
         screenshots.append(
             Screenshot(
                 id=r["id"],
@@ -84,6 +91,7 @@ def get_all_screenshots(
                 note=r["note"] or "",
                 duration=float(dur),
                 thumbnail_path=thumb,
+                folder=fld,
             )
         )
     return screenshots
@@ -98,6 +106,7 @@ def get_screenshot_by_id(screenshot_id: int) -> Optional[Screenshot]:
         keys = r.keys()
         dur = r["duration"] if "duration" in keys and r["duration"] is not None else 0.0
         thumb = r["thumbnail_path"] if "thumbnail_path" in keys and r["thumbnail_path"] is not None else ""
+        fld = r["folder"] if "folder" in keys and r["folder"] else "العامة"
         return Screenshot(
             id=r["id"],
             file_path=r["file_path"],
@@ -111,6 +120,7 @@ def get_screenshot_by_id(screenshot_id: int) -> Optional[Screenshot]:
             note=r["note"] or "",
             duration=float(dur),
             thumbnail_path=thumb,
+            folder=fld,
         )
 
 def toggle_favorite_screenshot(screenshot_id: int) -> bool:
@@ -181,6 +191,121 @@ def get_screenshots_count() -> int:
         cursor.execute("SELECT COUNT(*) FROM screenshots")
         row = cursor.fetchone()
         return row[0] if row else 0
+
+def get_screenshots_count_filtered(
+    search_query: str = "",
+    capture_type: Optional[str] = None,
+    favorites_only: bool = False,
+    folder: Optional[str] = None
+) -> int:
+    query = "SELECT COUNT(*) FROM screenshots WHERE 1=1"
+    params = []
+
+    if search_query:
+        query += " AND (filename LIKE ? OR note LIKE ?)"
+        term = f"%{search_query}%"
+        params.extend([term, term])
+
+    if capture_type and capture_type != "all":
+        if capture_type == "video":
+            query += " AND (capture_type LIKE 'video%' OR filename LIKE '%.mp4' OR filename LIKE '%.avi')"
+        elif capture_type == "full":
+            query += " AND capture_type = 'full'"
+        elif capture_type == "area":
+            query += " AND capture_type = 'area'"
+        else:
+            query += " AND capture_type = ?"
+            params.append(capture_type)
+
+    if favorites_only:
+        query += " AND is_favorite = 1"
+
+    if folder and folder not in ("all", "كافة الملفات"):
+        query += " AND folder = ?"
+        params.append(folder)
+
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute(query, params)
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+def get_screenshot_folders() -> List[dict]:
+    """Retrieve all folders with their item counts and colors."""
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT name, color FROM screenshot_folders ORDER BY id ASC")
+        f_rows = cursor.fetchall()
+
+        cursor.execute("SELECT folder, COUNT(*) as cnt FROM screenshots GROUP BY folder")
+        counts = {r["folder"]: r["cnt"] for r in cursor.fetchall()}
+
+        result = []
+        seen = set()
+        for r in f_rows:
+            name = r["name"]
+            seen.add(name)
+            result.append({
+                "name": name,
+                "color": r["color"] or "#3b82f6",
+                "count": counts.get(name, 0)
+            })
+
+        for f_name, cnt in counts.items():
+            if f_name and f_name not in seen:
+                result.append({
+                    "name": f_name,
+                    "color": "#3b82f6",
+                    "count": cnt
+                })
+        return result
+
+def add_screenshot_folder(name: str, color: str = "#3b82f6") -> bool:
+    name = name.strip()
+    if not name:
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("INSERT INTO screenshot_folders (name, color) VALUES (?, ?)", (name, color))
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+def rename_screenshot_folder(old_name: str, new_name: str) -> bool:
+    old_name = old_name.strip()
+    new_name = new_name.strip()
+    if not old_name or not new_name or old_name == new_name:
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE screenshot_folders SET name = ? WHERE name = ?", (new_name, old_name))
+            cursor.execute("UPDATE screenshots SET folder = ? WHERE folder = ?", (new_name, old_name))
+            conn.commit()
+            return True
+        except Exception:
+            return False
+
+def delete_screenshot_folder(name: str) -> bool:
+    name = name.strip()
+    if not name or name == "العامة":
+        return False
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM screenshot_folders WHERE name = ?", (name,))
+        cursor.execute("UPDATE screenshots SET folder = 'العامة' WHERE folder = ?", (name,))
+        conn.commit()
+        return True
+
+def move_screenshot_to_folder(screenshot_id: int, folder_name: str) -> bool:
+    folder_name = folder_name.strip() or "العامة"
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("UPDATE screenshots SET folder = ? WHERE id = ?", (folder_name, screenshot_id))
+        conn.commit()
+        return cursor.rowcount > 0
 
 def clean_missing_files():
     """Remove database entries whose files no longer exist on disk."""
