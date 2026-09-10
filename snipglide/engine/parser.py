@@ -7,10 +7,10 @@ import random
 from typing import Any
 from snipglide.utils.helpers import get_clipboard_text
 
-# Regex patterns for form variables
-_INPUT_PATTERN = re.compile(r"\{\{input:([a-zA-Z0-9_]+)(?::([^}]+))?\}\}")
-_CHOICE_PATTERN = re.compile(r"\{\{choice:([a-zA-Z0-9_]+):([^}]+)\}\}")
-_LEGACY_FORM_PATTERN = re.compile(r"\{\{form:([a-zA-Z0-9_]+)\}\}")
+# Regex patterns for form variables (supporting Unicode/Arabic identifiers)
+_INPUT_PATTERN = re.compile(r"\{\{input:([^\s:}]+)(?::([^}]+))?\}\}")
+_CHOICE_PATTERN = re.compile(r"\{\{choice:([^\s:}]+):([^}]+)\}\}")
+_LEGACY_FORM_PATTERN = re.compile(r"\{\{form:([^\s:}]+)\}\}")
 
 def extract_form_fields(text: str) -> list[dict[str, Any]]:
     """

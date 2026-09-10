@@ -105,6 +105,36 @@ class TestSmartSnippetsEngine(unittest.TestCase):
         self.assertNotIn("{{project}}", rendered)
         self.assertNotIn("{{selection}}", rendered)
 
+    def test_arabic_and_unicode_smart_snippets(self):
+        text = "أهلاً بك يا {{input:اسم_المستخدم:محمد}} 👋 في مشروع {{choice:البيئة:تطوير,إنتاج}}"
+        fields = extract_form_fields(text)
+        self.assertEqual(len(fields), 2)
+        self.assertEqual(fields[0]["name"], "اسم_المستخدم")
+        self.assertEqual(fields[0]["default"], "محمد")
+        self.assertEqual(fields[1]["name"], "البيئة")
+        self.assertEqual(fields[1]["options"], ["تطوير", "إنتاج"])
+
+        replaced = replace_form_variables(text, {"اسم_المستخدم": "أحمد", "البيئة": "إنتاج"})
+        self.assertIn("أهلاً بك يا أحمد", replaced)
+        self.assertIn("في مشروع إنتاج", replaced)
+        self.assertIn("👋", replaced)
+
+    def test_rapid_typing_buffer_clearing(self):
+        from unittest.mock import MagicMock
+        from snipglide.engine.listener import ExpansionEngine
+
+        engine = ExpansionEngine(settings_provider=lambda: {"enabled": True, "max_buffer": 20})
+        engine.controller = MagicMock()
+
+        # Simulate rapid typing
+        for char in "quick_fox_jumped_over_lazy_dog_12345":
+            engine.buffer += char
+            if len(engine.buffer) > 20:
+                engine.buffer = engine.buffer[-20:]
+
+        self.assertLessEqual(len(engine.buffer), 20)
+        self.assertTrue(engine.buffer.endswith("12345"))
+
 
 class TestSmartSnippetsDatabase(unittest.TestCase):
     """Test database persistence for snippet_type and language."""

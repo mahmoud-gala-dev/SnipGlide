@@ -63,12 +63,37 @@ def initialize_database():
             )
         """)
         
+        # Ensure legacy snippets table has all expected columns before indexing
+        cursor.execute("PRAGMA table_info(snippets)")
+        existing_cols = {col[1] for col in cursor.fetchall()}
+        snippet_col_defs = {
+            "group_id": "INTEGER",
+            "tags": "TEXT DEFAULT ''",
+            "description": "TEXT DEFAULT ''",
+            "language": "TEXT DEFAULT 'Plain Text'",
+            "enabled": "INTEGER DEFAULT 1",
+            "favorite": "INTEGER DEFAULT 0",
+            "usage_counter": "INTEGER DEFAULT 0",
+            "created_date": "TEXT",
+            "modified_date": "TEXT",
+            "hotkey": "TEXT DEFAULT ''",
+            "regex_enabled": "INTEGER DEFAULT 0",
+            "app_filter": "TEXT DEFAULT ''",
+            "window_filter": "TEXT DEFAULT ''",
+            "notes": "TEXT DEFAULT ''",
+            "snippet_type": "TEXT DEFAULT 'Text'",
+        }
+        for col_name, col_type in snippet_col_defs.items():
+            if col_name not in existing_cols:
+                cursor.execute(f"ALTER TABLE snippets ADD COLUMN {col_name} {col_type}")
+
         # Build indexes for performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_shortcut ON snippets (shortcut)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_group_id ON snippets (group_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_favorite ON snippets (favorite)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_modified ON snippets (modified_date)")
-        
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_type ON snippets (snippet_type)")
+
         # Create autocorrect table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS autocorrect (
@@ -76,7 +101,7 @@ def initialize_database():
                 correction TEXT NOT NULL
             )
         """)
-        
+
         # Prepopulate autocorrect if empty
         cursor.execute("SELECT COUNT(*) FROM autocorrect")
         if cursor.fetchone()[0] == 0:
@@ -155,6 +180,20 @@ def initialize_database():
                 FOREIGN KEY (category_id) REFERENCES note_categories(id) ON DELETE SET NULL
             )
         """)
+        # Ensure legacy notes table has all expected columns before indexing
+        cursor.execute("PRAGMA table_info(notes)")
+        existing_note_cols = {col[1] for col in cursor.fetchall()}
+        note_col_defs = {
+            "category_id": "INTEGER",
+            "created_date": "TEXT",
+            "modified_date": "TEXT",
+            "color": "TEXT DEFAULT '#2563eb'",
+            "pinned": "INTEGER DEFAULT 0",
+        }
+        for col_name, col_type in note_col_defs.items():
+            if col_name not in existing_note_cols:
+                cursor.execute(f"ALTER TABLE notes ADD COLUMN {col_name} {col_type}")
+
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_category ON notes (category_id)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_pinned ON notes (pinned)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_notes_modified ON notes (modified_date)")

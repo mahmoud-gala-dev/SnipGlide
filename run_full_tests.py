@@ -32,6 +32,7 @@ def run_suite():
         "test_projects_and_commands.py",
         "test_unified_search.py",
         "test_hardening_security.py",
+        "test_release_readiness.py",
     ]
 
     print("=" * 70)
