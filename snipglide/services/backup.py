@@ -94,6 +94,9 @@ def import_backup(file_path: str) -> bool:
             logger.error("Invalid backup file: missing snippets or groups schema.")
             return False
             
+        # Collect API requests for post-commit secure processing
+        _pending_api_requests = backup_data.get("saved_api_requests", []) if "saved_api_requests" in backup_data else []
+
         with get_connection() as conn:
             cursor = conn.cursor()
             
@@ -150,16 +153,16 @@ def import_backup(file_path: str) -> bool:
                 except Exception:
                     pass
 
-            if "saved_api_requests" in backup_data:
+            # API requests: determine which ones are NOT already in DB (deduplicate check)
+            # Actual insertion happens AFTER conn.commit() to avoid locking conflict with ApiRepository.
+            if _pending_api_requests:
+                _to_insert_api = []
                 try:
-                    for req in backup_data.get("saved_api_requests", []):
+                    for req in _pending_api_requests:
                         if isinstance(req, dict) and req.get("name") and req.get("url"):
                             cursor.execute("SELECT id FROM saved_api_requests WHERE name = ? AND url = ?", (req["name"], req["url"]))
                             if not cursor.fetchone():
-                                cursor.execute(
-                                    "INSERT INTO saved_api_requests (name, method, url, params_json, headers_json, auth_type, auth_data_json, body_type, body_content, collection_name, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                                    (req["name"], req.get("method", "GET"), req["url"], req.get("params_json", "[]"), req.get("headers_json", "[]"), req.get("auth_type", "none"), req.get("auth_data_json", "{}"), req.get("body_type", "none"), req.get("body_content", ""), req.get("collection_name", "General"), req.get("is_favorite", 0)),
-                                )
+                                _to_insert_api.append(req)
                 except Exception:
                     pass
 
@@ -190,8 +193,37 @@ def import_backup(file_path: str) -> bool:
                     pass
                 
             conn.commit()
-            logger.info("Backup imported successfully.")
-            return True
+
+        # After main connection is committed and closed, safely process API requests via
+        # ApiRepository (which manages its own connection) to ensure encryption is applied.
+        if _pending_api_requests and _to_insert_api:
+            import json as _json
+            from snipglide.database.api_repo import ApiRepository
+            from snipglide.models.api_request import ApiRequest
+            for req in _to_insert_api:
+                try:
+                    raw_auth = _json.loads(req.get("auth_data_json", "{}")) if isinstance(req.get("auth_data_json"), str) else (req.get("auth_data_json") or {})
+                    raw_headers = _json.loads(req.get("headers_json", "[]")) if isinstance(req.get("headers_json"), str) else (req.get("headers_json") or [])
+                    params = _json.loads(req.get("params_json", "[]")) if isinstance(req.get("params_json"), str) else (req.get("params_json") or [])
+                    api_req = ApiRequest(
+                        name=req["name"],
+                        method=req.get("method", "GET"),
+                        url=req["url"],
+                        params=params,
+                        headers=raw_headers,
+                        auth_type=req.get("auth_type", "none"),
+                        auth_data=raw_auth,
+                        body_type=req.get("body_type", "none"),
+                        body_content=req.get("body_content", ""),
+                        collection_name=req.get("collection_name", "General"),
+                        is_favorite=bool(req.get("is_favorite", 0)),
+                    )
+                    ApiRepository.add_request(api_req)
+                except Exception as _e:
+                    logger.error(f"Failed to add saved API request: {_e}")
+
+        logger.info("Backup imported successfully.")
+        return True
 
     except Exception as e:
         logger.error(f"Failed to import backup: {e}")

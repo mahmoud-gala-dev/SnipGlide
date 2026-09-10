@@ -1,6 +1,16 @@
 import sys
 import os
 
+# ── Frozen EXE Regex Worker Entry Point ──────────────────────────────────────
+# When SnipGlide.exe is spawned with --regex-worker by RegexService._execute_isolated(),
+# it runs as an isolated regex worker process (reads JSON from stdin, writes result to stdout).
+# This enables true OS-level process kill for ReDoS protection inside the PyInstaller bundle.
+if "--regex-worker" in sys.argv:
+    from snipglide.services.regex_worker import main as _regex_worker_main
+    _regex_worker_main()
+    sys.exit(0)
+# ─────────────────────────────────────────────────────────────────────────────
+
 # Ensure current directory is in sys.path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
@@ -28,4 +38,5 @@ if __name__ == "__main__":
         except Exception:
             pass
         print(f"\n[ERROR] Failed to start SnipGlide: {e}\n{err_msg}")
+
 

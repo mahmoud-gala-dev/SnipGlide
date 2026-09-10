@@ -247,5 +247,90 @@ class TestLegacyUpgradeMigration(unittest.TestCase):
         self.assertNotIn("legacy_sk_gemini_plaintext_key_9988", json.dumps(disk_data))
 
 
+class TestBackupRestoreSecurity(unittest.TestCase):
+    """Validates that backup restore applies encryption to API credentials (STEP 18)."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.orig_data_dir = config.DATA_DIR
+        self.orig_db_file = config.DB_FILE
+        self.orig_settings_file = config.SETTINGS_FILE
+
+        isolated = Path(self.temp_dir) / "SnipGlideBackupTest"
+        isolated.mkdir(parents=True, exist_ok=True)
+        config.DATA_DIR = isolated
+        config.DB_FILE = isolated / "snipglide.db"
+        config.SETTINGS_FILE = isolated / "settings.json"
+        import snipglide.database.connection as db_conn
+        db_conn.DB_FILE = config.DB_FILE
+        initialize_database()
+
+    def tearDown(self):
+        import snipglide.database.connection as db_conn
+        config.DATA_DIR = self.orig_data_dir
+        config.DB_FILE = self.orig_db_file
+        config.SETTINGS_FILE = self.orig_settings_file
+        db_conn.DB_FILE = self.orig_db_file
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_backup_restore_encrypts_credentials(self):
+        """After restoring a legacy plaintext backup, API credentials must be encrypted in DB."""
+        from snipglide.services.backup import import_backup as restore_backup
+        import json, tempfile as _tf
+
+        SENTINEL = "BACKUP_SENTINEL_PLAINTEXT_928471"
+
+        # Simulate a legacy backup with plaintext API credentials
+        # import_backup requires at minimum 'groups' and 'snippets' keys
+        legacy_backup = {
+            "groups": [],
+            "snippets": [],
+            "saved_api_requests": [
+                {
+                    "name": "Legacy Backup Request",
+                    "method": "POST",
+                    "url": "https://api.legacy.example.com/endpoint",
+                    "auth_type": "bearer",
+                    "auth_data_json": json.dumps({"token": SENTINEL}),
+                    "headers_json": json.dumps([
+                        {"enabled": True, "key": "Authorization", "value": f"Bearer {SENTINEL}"}
+                    ]),
+                    "params_json": "[]",
+                    "body_type": "none",
+                    "body_content": "",
+                    "collection_name": "Legacy",
+                    "is_favorite": 0,
+                }
+            ]
+        }
+
+        backup_path = os.path.join(self.temp_dir, "legacy_backup.json")
+        with open(backup_path, "w", encoding="utf-8") as f:
+            json.dump(legacy_backup, f)
+
+        # Restore the backup
+        result = restore_backup(backup_path)
+        self.assertTrue(result, "Backup restore should succeed")
+
+        # Inspect the active database — credentials must NOT be plaintext
+        conn = get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT auth_data_json, headers_json FROM saved_api_requests WHERE name = ?",
+                           ("Legacy Backup Request",))
+            row = cursor.fetchone()
+        finally:
+            conn.close()
+
+        self.assertIsNotNone(row, "Restored request should exist in database")
+        self.assertNotIn(SENTINEL, row["auth_data_json"],
+                         "Plaintext sentinel MUST NOT appear in auth_data_json after restore")
+        self.assertNotIn(SENTINEL, row["headers_json"],
+                         "Plaintext sentinel MUST NOT appear in headers_json after restore")
+        self.assertIn(ENC_PREFIX, row["auth_data_json"],
+                      "auth_data_json should be encrypted after restore")
+
+
 if __name__ == "__main__":
     unittest.main()
+

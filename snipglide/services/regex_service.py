@@ -81,7 +81,11 @@ class RegexService:
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             startupinfo.wShowWindow = subprocess.SW_HIDE
 
-        cmd = [sys.executable, "-m", "snipglide.services.regex_worker"]
+        if getattr(sys, "frozen", False):
+            cmd = [sys.executable, "--regex-worker"]
+        else:
+            cmd = [sys.executable, "-m", "snipglide.services.regex_worker"]
+
         try:
             proc = subprocess.Popen(
                 cmd,
@@ -110,24 +114,12 @@ class RegexService:
                 pass
             return False, {}, "Regex execution timed out. The pattern may cause excessive backtracking."
         except Exception:
-            # Subprocess failed to launch (e.g. frozen exe or restricted environment fallback)
-            import concurrent.futures
-            from snipglide.services.regex_worker import _handle_find, _handle_replace
-            action = req_dict.get("action", "find")
-            handler = _handle_replace if action == "replace" else _handle_find
-
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(handler, req_dict)
-            try:
-                res = future.result(timeout=timeout)
-                executor.shutdown(wait=False)
-                return True, res, ""
-            except concurrent.futures.TimeoutError:
-                executor.shutdown(wait=False)
-                return False, {}, "Regex execution timed out. The pattern may cause excessive backtracking."
-            except Exception as ex:
-                executor.shutdown(wait=False)
-                return False, {}, f"Execution failed: {ex}"
+            # SECURITY: No unsafe fallback. A catastrophic regex in an unkillable thread
+            # cannot be safely stopped. Return a clear error instead.
+            return False, {}, (
+                "Regex execution failed: isolated process could not be started. "
+                "Please try a simpler pattern."
+            )
 
     @staticmethod
     def find_matches(
