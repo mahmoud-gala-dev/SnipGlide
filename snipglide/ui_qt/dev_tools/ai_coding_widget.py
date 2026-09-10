@@ -51,6 +51,7 @@ class AIWorker(QThread):
         self.system_prompt = system_prompt
         self.should_stream = stream
         self._is_cancelled = False
+        self.finished.connect(self.deleteLater)
 
     def cancel(self):
         self._is_cancelled = True
@@ -72,6 +73,40 @@ class AIWorker(QThread):
         except Exception as e:
             if not self._is_cancelled:
                 self.error_occurred.emit(str(e))
+
+
+class AIConnectionTestWorker(QThread):
+    """Background worker for testing AI provider connectivity without freezing the UI."""
+    result_ready = Signal(bool, str)
+
+    def __init__(self, provider: BaseAIProvider):
+        super().__init__()
+        self.provider = provider
+        self.finished.connect(self.deleteLater)
+
+    def run(self):
+        try:
+            ok, msg = self.provider.test_connection()
+            self.result_ready.emit(ok, msg)
+        except Exception as e:
+            self.result_ready.emit(False, str(e))
+
+
+class AIModelListWorker(QThread):
+    """Background worker for querying provider model lists without freezing the UI."""
+    models_ready = Signal(list)
+
+    def __init__(self, provider: BaseAIProvider):
+        super().__init__()
+        self.provider = provider
+        self.finished.connect(self.deleteLater)
+
+    def run(self):
+        try:
+            models = self.provider.list_models()
+            self.models_ready.emit(models)
+        except Exception:
+            self.models_ready.emit([])
 
 
 class AICodingWidget(QWidget):
@@ -114,10 +149,10 @@ class AICodingWidget(QWidget):
         self.btn_toggle_key.clicked.connect(self._toggle_key_visibility)
         row1.addWidget(self.btn_toggle_key)
 
-        btn_test = QPushButton("🔌 Test")
-        btn_test.setStyleSheet("background-color: #313244; color: #89b4fa; font-weight: bold; padding: 4px 10px; border-radius: 4px;")
-        btn_test.clicked.connect(self._test_connection)
-        row1.addWidget(btn_test)
+        self.btn_test = QPushButton("🔌 Test")
+        self.btn_test.setStyleSheet("background-color: #313244; color: #89b4fa; font-weight: bold; padding: 4px 10px; border-radius: 4px;")
+        self.btn_test.clicked.connect(self._test_connection)
+        row1.addWidget(self.btn_test)
 
         cfg_layout.addLayout(row1)
 
@@ -136,12 +171,12 @@ class AICodingWidget(QWidget):
         self.cb_model.setStyleSheet("background-color: #181825; color: #cdd6f4; border: 1px solid #45475a; padding: 4px;")
         row2.addWidget(self.cb_model, 1)
 
-        btn_refresh_models = QPushButton("🔄")
-        btn_refresh_models.setFixedWidth(30)
-        btn_refresh_models.setToolTip("Fetch available models from provider")
-        btn_refresh_models.setStyleSheet("background-color: #313244; color: #cdd6f4; border-radius: 4px;")
-        btn_refresh_models.clicked.connect(self._refresh_models)
-        row2.addWidget(btn_refresh_models)
+        self.btn_refresh_models = QPushButton("🔄")
+        self.btn_refresh_models.setFixedWidth(30)
+        self.btn_refresh_models.setToolTip("Fetch available models from provider")
+        self.btn_refresh_models.setStyleSheet("background-color: #313244; color: #cdd6f4; border-radius: 4px;")
+        self.btn_refresh_models.clicked.connect(self._refresh_models)
+        row2.addWidget(self.btn_refresh_models)
 
         row2.addWidget(QLabel("Temp:"))
         self.spin_temp = QDoubleSpinBox()
@@ -319,22 +354,40 @@ class AICodingWidget(QWidget):
     def _test_connection(self):
         cfg = self._get_current_config()
         provider = get_ai_provider(cfg)
-        ok, msg = provider.test_connection()
-        if ok:
-            QMessageBox.information(self, "Connection Successful", msg)
-        else:
-            QMessageBox.warning(self, "Connection Failed", msg)
+        self.btn_test.setEnabled(False)
+        self.btn_test.setText("⏳ ...")
+
+        def on_test_done(ok: bool, msg: str):
+            self.btn_test.setEnabled(True)
+            self.btn_test.setText("🔌 Test")
+            if ok:
+                QMessageBox.information(self, "Connection Successful", msg)
+            else:
+                QMessageBox.warning(self, "Connection Failed", msg)
+
+        self._conn_worker = AIConnectionTestWorker(provider)
+        self._conn_worker.result_ready.connect(on_test_done)
+        self._conn_worker.start()
 
     def _refresh_models(self):
         cfg = self._get_current_config()
         provider = get_ai_provider(cfg)
-        models = provider.list_models()
-        if models:
-            self.cb_model.clear()
-            self.cb_model.addItems(models)
-            QMessageBox.information(self, "Models Updated", f"Retrieved {len(models)} model(s).")
-        else:
-            QMessageBox.warning(self, "Models", "Could not fetch models. Check connection/API key.")
+        self.btn_refresh_models.setEnabled(False)
+        self.btn_refresh_models.setText("⏳")
+
+        def on_models_ready(models: list):
+            self.btn_refresh_models.setEnabled(True)
+            self.btn_refresh_models.setText("🔄")
+            if models:
+                self.cb_model.clear()
+                self.cb_model.addItems(models)
+                QMessageBox.information(self, "Models Updated", f"Retrieved {len(models)} model(s).")
+            else:
+                QMessageBox.warning(self, "Models", "Could not fetch models. Check connection/API key.")
+
+        self._models_worker = AIModelListWorker(provider)
+        self._models_worker.models_ready.connect(on_models_ready)
+        self._models_worker.start()
 
     def _run_action(self):
         code_input = self.txt_input.toPlainText().strip()
@@ -414,7 +467,13 @@ class AICodingWidget(QWidget):
     def _stop_action(self):
         if self.worker:
             self.worker.cancel()
-            self.worker.terminate()
+            try:
+                self.worker.chunk_received.disconnect()
+                self.worker.completed.disconnect()
+                self.worker.error_occurred.disconnect()
+            except Exception:
+                pass
+            self.worker.wait(50)
             self.lbl_output_status.setText("⏹️ Cancelled by user")
             self.btn_send.setEnabled(True)
             self.btn_stop.setEnabled(False)
@@ -426,9 +485,11 @@ class AICodingWidget(QWidget):
             QMessageBox.information(self, "Copied", "AI output copied to clipboard!")
 
     def _load_saved_config(self):
+        from snipglide.services.security import decrypt_secret
         settings = load_settings()
-        api_key = settings.get("ai_api_key", "")
-        self.txt_api_key.setText(api_key)
+        stored_key = settings.get("ai_api_key", "")
+        decrypted_key = decrypt_secret(stored_key)
+        self.txt_api_key.setText(decrypted_key)
         prov = settings.get("ai_provider", "gemini").lower()
         if "openai" in prov:
             self.cb_provider.setCurrentIndex(1)
@@ -439,7 +500,9 @@ class AICodingWidget(QWidget):
         self._on_provider_changed()
 
     def _save_current_config(self):
+        from snipglide.services.security import encrypt_secret
         settings = load_settings()
-        settings["ai_api_key"] = self.txt_api_key.text().strip()
+        key_text = self.txt_api_key.text().strip()
+        settings["ai_api_key"] = encrypt_secret(key_text) if key_text else ""
         settings["ai_provider"] = self.cb_provider.currentText().lower()
         save_settings(settings)

@@ -31,6 +31,7 @@ class ApiRequestWorker(QThread):
         self.body_bytes = body_bytes
         self.timeout = timeout
         self.is_cancelled = False
+        self.finished.connect(self.deleteLater)
 
     def run(self):
         if self.is_cancelled:
@@ -634,7 +635,11 @@ class ApiTesterWidget(QWidget):
     def cancel_request(self):
         if self.current_worker:
             self.current_worker.cancel()
-            self.current_worker.terminate()
+            try:
+                self.current_worker.result_ready.disconnect(self._on_response_received)
+            except Exception:
+                pass
+            self.current_worker.wait(50)
             self.status_badge.setText("تم الإلغاء")
             self.status_badge.setStyleSheet("background-color: #3b0764; color: #c084fc; font-weight: bold; border-radius: 6px; padding: 4px 10px;")
             self.btn_send.setEnabled(True)

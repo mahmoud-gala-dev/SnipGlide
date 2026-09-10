@@ -85,10 +85,13 @@ The resulting executable will be created in `dist\SnipGlide.exe`.
 
 ---
 
-## 📚 Complete Arabic Documentation / الوثيقة الكاملة للمشروع
-
+## 📚 Complete Documentation & Security Guide
+ 
 لمطالعة الشرح التفصيلي العميق لكل ميزة وأداة ومكون برمجي في التطبيق:
 👉 **[راجع وثيقة المميزات الكاملة PROJECT_FEATURES.md](PROJECT_FEATURES.md)**
+
+لمطالعة تفاصيل الأمان، التشفير، وعزل ReDoS:
+👉 **[راجع وثيقة الأمان والخصوصية SECURITY.md](SECURITY.md)**
 
 ---
 

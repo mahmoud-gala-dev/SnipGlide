@@ -62,3 +62,10 @@ def setup_logger():
 
 
 logger = setup_logger()
+
+
+def redact_sensitive_text(text: str) -> str:
+    """Centralized utility to scrub secrets, tokens, keys, and credentials from text."""
+    if not text:
+        return ""
+    return RedactingFilter._sanitize(text)

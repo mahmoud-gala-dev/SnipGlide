@@ -3,11 +3,32 @@ from datetime import datetime
 from typing import Optional
 from snipglide.database.connection import get_connection
 from snipglide.models.api_request import ApiRequest, ApiHistoryEntry
+from snipglide.services.security import encrypt_secret, decrypt_secret, sanitize_url_query
 from snipglide.utils.logger import logger
 
 
 class ApiRepository:
     """Repository for managing saved API requests and execution history."""
+
+    @staticmethod
+    def _encrypt_auth_data(auth_data: dict) -> dict:
+        if not auth_data:
+            return {}
+        res = dict(auth_data)
+        for k in ("token", "password", "value", "secret"):
+            if k in res and isinstance(res[k], str) and res[k]:
+                res[k] = encrypt_secret(res[k])
+        return res
+
+    @staticmethod
+    def _decrypt_auth_data(auth_data: dict) -> dict:
+        if not auth_data:
+            return {}
+        res = dict(auth_data)
+        for k in ("token", "password", "value", "secret"):
+            if k in res and isinstance(res[k], str) and res[k]:
+                res[k] = decrypt_secret(res[k])
+        return res
 
     @staticmethod
     def _row_to_request(row) -> ApiRequest:
@@ -33,6 +54,9 @@ class ApiRepository:
             except Exception:
                 pass
 
+        raw_auth_data = _safe_json(row["auth_data_json"], {})
+        decrypted_auth = ApiRepository._decrypt_auth_data(raw_auth_data)
+
         return ApiRequest(
             id=row["id"],
             name=row["name"],
@@ -41,7 +65,7 @@ class ApiRepository:
             params=_safe_json(row["params_json"], []),
             headers=_safe_json(row["headers_json"], []),
             auth_type=row["auth_type"] or "none",
-            auth_data=_safe_json(row["auth_data_json"], {}),
+            auth_data=decrypted_auth,
             body_type=row["body_type"] or "none",
             body_content=row["body_content"] or "",
             collection_name=row["collection_name"] or "General",
@@ -55,6 +79,7 @@ class ApiRepository:
         conn = get_connection()
         try:
             cursor = conn.cursor()
+            secured_auth = ApiRepository._encrypt_auth_data(req.auth_data or {})
             cursor.execute("""
                 INSERT INTO saved_api_requests (
                     name, method, url, params_json, headers_json,
@@ -68,7 +93,7 @@ class ApiRepository:
                 json.dumps(req.params or []),
                 json.dumps(req.headers or []),
                 req.auth_type,
-                json.dumps(req.auth_data or {}),
+                json.dumps(secured_auth),
                 req.body_type,
                 req.body_content,
                 req.collection_name or "General",
@@ -89,6 +114,7 @@ class ApiRepository:
         conn = get_connection()
         try:
             cursor = conn.cursor()
+            secured_auth = ApiRepository._encrypt_auth_data(req.auth_data or {})
             cursor.execute("""
                 UPDATE saved_api_requests SET
                     name = ?, method = ?, url = ?, params_json = ?, headers_json = ?,
@@ -102,7 +128,7 @@ class ApiRepository:
                 json.dumps(req.params or []),
                 json.dumps(req.headers or []),
                 req.auth_type,
-                json.dumps(req.auth_data or {}),
+                json.dumps(secured_auth),
                 req.body_type,
                 req.body_content,
                 req.collection_name or "General",
@@ -116,6 +142,7 @@ class ApiRepository:
             raise
         finally:
             conn.close()
+
 
     @staticmethod
     def get_request_by_id(req_id: int) -> Optional[ApiRequest]:
@@ -189,13 +216,14 @@ class ApiRepository:
         conn = get_connection()
         try:
             cursor = conn.cursor()
+            sanitized_url = sanitize_url_query(entry.url)
             cursor.execute("""
                 INSERT INTO api_history (
                     method, url, status_code, status_text, response_time_ms, response_size_bytes, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, (
                 entry.method,
-                entry.url,
+                sanitized_url,
                 entry.status_code,
                 entry.status_text,
                 entry.response_time_ms,

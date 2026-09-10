@@ -30,6 +30,7 @@ def run_suite():
         "test_ai_platform.py",
         "test_projects_and_commands.py",
         "test_unified_search.py",
+        "test_hardening_security.py",
     ]
 
     print("=" * 70)

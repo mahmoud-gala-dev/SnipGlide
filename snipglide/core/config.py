@@ -61,6 +61,16 @@ def load_settings() -> dict:
             loaded = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
             default = DEFAULT_SETTINGS.copy()
             default.update(loaded)
+
+            # Auto-migration: encrypt plaintext AI API key at rest
+            raw_key = default.get("ai_api_key", "")
+            if raw_key and not raw_key.startswith("enc:v1:"):
+                from snipglide.services.security import encrypt_secret, decrypt_secret
+                enc_key = encrypt_secret(raw_key)
+                if decrypt_secret(enc_key) == raw_key:
+                    default["ai_api_key"] = enc_key
+                    save_settings(default)
+
             return default
         except Exception:
             return DEFAULT_SETTINGS.copy()

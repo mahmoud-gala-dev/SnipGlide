@@ -1,5 +1,5 @@
 from typing import Optional, Callable, Any
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from PySide6.QtGui import QCursor, QTextCharFormat, QColor, QTextCursor, QFont
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
@@ -17,6 +17,33 @@ from snipglide.ui_qt.dev_tools.common import (
     show_status_badge, copy_text_to_clipboard
 )
 
+
+class RegexMatchWorker(QThread):
+    """Background worker for non-blocking regex matching with ReDoS protection."""
+    result_ready = Signal(int, bool, list, str)
+
+    def __init__(self, gen: int, pattern: str, text: str, flags: str, timeout: float = 2.0):
+        super().__init__()
+        self.gen = gen
+        self.pattern = pattern
+        self.text = text
+        self.flags = flags
+        self.timeout = timeout
+        self.is_cancelled = False
+
+    def cancel(self):
+        self.is_cancelled = True
+
+    def run(self):
+        if self.is_cancelled:
+            return
+        ok, matches, summary = RegexService.find_matches(
+            self.pattern, self.text, flags_str=self.flags, timeout=self.timeout
+        )
+        if not self.is_cancelled:
+            self.result_ready.emit(self.gen, ok, matches, summary)
+
+
 class RegexPlaygroundWidget(QWidget):
     def __init__(self, toast_callback: Optional[Callable[[str, bool], None]] = None, parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -29,6 +56,8 @@ class RegexPlaygroundWidget(QWidget):
         self._debounce_timer.timeout.connect(self._run_matching_now)
 
         self._current_matches: list[dict[str, Any]] = []
+        self._worker_gen: int = 0
+        self._current_worker: Optional[RegexMatchWorker] = None
         self._setup_ui()
 
     def _setup_ui(self):
@@ -205,6 +234,10 @@ class RegexPlaygroundWidget(QWidget):
 
     def _run_matching(self):
         self._run_matching_now()
+        if self._current_worker and self._current_worker.isRunning():
+            self._current_worker.wait(3000)
+            from PySide6.QtWidgets import QApplication
+            QApplication.processEvents()
 
     def _replace_all(self):
         self._do_replace(replace_all=True)
@@ -240,7 +273,21 @@ class RegexPlaygroundWidget(QWidget):
             self._clear_highlights()
             return
 
-        ok, matches, summary = RegexService.find_matches(pattern, text, flags_str=flags)
+        # Cancel active worker if running
+        if self._current_worker:
+            self._current_worker.cancel()
+
+        self._worker_gen += 1
+        gen = self._worker_gen
+
+        self.match_badge.setText("⏳ جاري الفحص...")
+        self._current_worker = RegexMatchWorker(gen, pattern, text, flags, timeout=2.0)
+        self._current_worker.result_ready.connect(self._on_matches_computed)
+        self._current_worker.start()
+
+    def _on_matches_computed(self, gen: int, ok: bool, matches: list[dict[str, Any]], summary: str):
+        if gen != self._worker_gen:
+            return  # Discard stale result
 
         if not ok:
             show_status_badge(self.status_lbl, summary, is_error=True)
@@ -257,10 +304,10 @@ class RegexPlaygroundWidget(QWidget):
         self.matches_list.clear()
         for m in matches:
             item_text = f"Match #{m['index']}: '{m['text']}' [{m['start']} -> {m['end']}]"
-            if m["groups"]:
+            if m.get("groups"):
                 groups_str = ", ".join(f"Group {k}={v}" for k, v in m["groups"].items())
                 item_text += f"\n  • {groups_str}"
-            if m["named_groups"]:
+            if m.get("named_groups"):
                 named_str = ", ".join(f"<{k}>={v}" for k, v in m["named_groups"].items())
                 item_text += f"\n  • Named: {named_str}"
 

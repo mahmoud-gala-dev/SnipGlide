@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 from snipglide.database.connection import get_connection
+from snipglide.utils.logger import logger
 
 
 def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
@@ -39,8 +40,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on snippets: %s", e)
 
         # 2. Notes
         try:
@@ -57,8 +58,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on notes: %s", e)
 
         # 3. Chat Notes
         try:
@@ -76,8 +77,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on chat_notes: %s", e)
 
         # 4. Clipboard History
         try:
@@ -95,8 +96,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on clipboard_history: %s", e)
 
         # 5. Saved Regexes
         try:
@@ -113,8 +114,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on saved_regexes: %s", e)
 
         # 6. Saved API Requests
         try:
@@ -132,8 +133,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on saved_api_requests: %s", e)
 
         # 7. Developer Projects
         try:
@@ -151,8 +152,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on developer_projects: %s", e)
 
         # 8. Terminal Commands
         try:
@@ -170,8 +171,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on terminal_commands: %s", e)
 
         # 9. Screenshots metadata
         try:
@@ -189,8 +190,8 @@ def search_all(query: str, limit: int = 50) -> List[Dict[str, Any]]:
                 (term, term, term, per_source_limit),
             )
             raw_results.extend(dict(row) for row in cursor.fetchall())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Unified search query error on screenshots: %s", e)
 
     # Score and rank results
     scored_results = []

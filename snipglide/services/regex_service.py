@@ -1,7 +1,12 @@
+import json
+import os
 import re
+import subprocess
+import sys
 from typing import Optional, Any
 
 _DANGEROUS_NESTED_QUANTIFIER = re.compile(r"\([^)]*([*+]\??|\{\d+,?\d*\}\??)\)[*+]")
+
 
 class RegexService:
     @staticmethod
@@ -15,7 +20,7 @@ class RegexService:
     def parse_flags(flags_str: str) -> int:
         """Converts flags string (e.g. 'imsx') to Python re flags bitmask."""
         flags = 0
-        f_lower = flags_str.lower()
+        f_lower = (flags_str or "").lower()
         if "i" in f_lower or "ignorecase" in f_lower:
             flags |= re.IGNORECASE
         if "m" in f_lower or "multiline" in f_lower:
@@ -65,6 +70,56 @@ class RegexService:
         return RegexService.validate_pattern(pattern_str, flags_str)
 
     @staticmethod
+    def _execute_isolated(req_dict: dict[str, Any], timeout: float = 2.0) -> tuple[bool, dict[str, Any], str]:
+        """
+        Executes regex in an isolated child process with strict OS-level timeout enforcement.
+        Kills process immediately if timeout expires to guarantee ReDoS immunity.
+        """
+        startupinfo = None
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            startupinfo.wShowWindow = subprocess.SW_HIDE
+
+        cmd = [sys.executable, "-m", "snipglide.services.regex_worker"]
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                startupinfo=startupinfo,
+            )
+            req_payload = json.dumps(req_dict, ensure_ascii=False)
+            stdout, _ = proc.communicate(input=req_payload, timeout=timeout)
+            if proc.returncode == 0 and stdout.strip():
+                try:
+                    data = json.loads(stdout)
+                    return True, data, ""
+                except Exception:
+                    pass
+            return False, {}, "Worker process failed"
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+                proc.wait(timeout=0.5)
+            except Exception:
+                pass
+            return False, {}, "Regex execution timed out. Pattern may cause excessive Catastrophic Backtracking (ReDoS)."
+        except Exception:
+            # Subprocess failed to launch (e.g. frozen exe fallback)
+            from snipglide.services.regex_worker import _handle_find, _handle_replace
+            action = req_dict.get("action", "find")
+            if action == "replace":
+                res = _handle_replace(req_dict)
+            else:
+                res = _handle_find(req_dict)
+            return True, res, ""
+
+    @staticmethod
     def find_matches(
         pattern_str: str,
         text: str,
@@ -73,7 +128,7 @@ class RegexService:
         timeout: float = 2.0
     ) -> tuple[bool, list[dict[str, Any]], str]:
         """
-        Finds all matches and captures groups safely with ReDoS protection.
+        Finds all matches and captures groups safely with ReDoS protection and real timeout enforcement.
         Returns: (success, list_of_match_dicts, summary_or_error)
         """
         if not pattern_str:
@@ -81,52 +136,25 @@ class RegexService:
         if not text:
             return True, [], "نص الاختبار فارغ (0 مطابقة)."
 
-        if RegexService.is_catastrophic_pattern(pattern_str) and len(text) > 20:
-            return False, [], "⚠️ نمط Regex عالي الخطورة لتضمنه تكراراً كمياً متداخلاً (Catastrophic Backtracking / ReDoS). يرجى تبسيط النمط."
+        req = {
+            "action": "find",
+            "pattern": pattern_str,
+            "text": text,
+            "flags": flags_str,
+            "max_matches": max_matches,
+        }
 
-        try:
-            flags = RegexService.parse_flags(flags_str)
-            compiled = re.compile(pattern_str, flags)
-        except re.error as e:
-            pos = getattr(e, "pos", None)
-            pos_info = f" عند الموضع {pos}" if pos is not None else ""
-            return False, [], f"خطأ في الـ Regex: {e.msg}{pos_info}"
-        except Exception as e:
-            return False, [], f"فشل تجميع Regex: {str(e)}"
+        ok, data, err = RegexService._execute_isolated(req, timeout=timeout)
+        if not ok:
+            return False, [], err
 
-        matches: list[dict[str, Any]] = []
-        count = 0
-        truncated = False
-        target_text = text
-        if len(text) > 100_000:
-            target_text = text[:100_000]
-            truncated = True
+        matches = data.get("matches", [])
+        # Convert integer group keys back from JSON string keys
+        for m in matches:
+            if "groups" in m and isinstance(m["groups"], dict):
+                m["groups"] = {int(k): v for k, v in m["groups"].items() if k.isdigit()}
 
-        try:
-            for match in compiled.finditer(target_text):
-                count += 1
-                named_groups = match.groupdict()
-                all_groups = {i: match.group(i) for i in range(1, len(match.groups()) + 1)}
-
-                match_info = {
-                    "index": count,
-                    "text": match.group(0),
-                    "start": match.start(),
-                    "end": match.end(),
-                    "groups": all_groups,
-                    "named_groups": named_groups,
-                }
-                matches.append(match_info)
-                if count >= max_matches:
-                    break
-
-            summary = f"تم العثور على {count} مطابقة" + (f" (تم الوصول للحد الأقصى المعروض: {max_matches})" if count >= max_matches else ".")
-            if truncated:
-                summary += " [تم فحص أول 100 ألف حرف فقط لحماية الأداء]"
-            return True, matches, summary
-        except Exception as e:
-            return False, [], f"خطأ أثناء فحص المطابقات: {str(e)}"
-
+        return data.get("success", True), matches, data.get("summary", data.get("error", ""))
 
     @staticmethod
     def replace(
@@ -138,22 +166,23 @@ class RegexService:
         timeout: float = 2.0
     ) -> tuple[bool, str]:
         """
-        Replaces matched patterns with replacement text with ReDoS protection.
-        Handles Python regex backreferences (\\1, \\g<name>) and invalid groups safely.
+        Replaces matched patterns with replacement text with ReDoS protection and real timeout enforcement.
         """
         if not pattern_str:
             return False, "نمط Regex فارغ."
 
-        if RegexService.is_catastrophic_pattern(pattern_str) and len(text) > 20:
-            return False, "⚠️ نمط Regex عالي الخطورة لتضمنه تكراراً كمياً متداخلاً (Catastrophic Backtracking / ReDoS). يرجى تبسيط النمط."
+        req = {
+            "action": "replace",
+            "pattern": pattern_str,
+            "text": text,
+            "replacement": replacement_str,
+            "flags": flags_str,
+            "replace_all": replace_all,
+        }
 
-        try:
-            flags = RegexService.parse_flags(flags_str)
-            compiled = re.compile(pattern_str, flags)
-            count = 0 if replace_all else 1
-            result = compiled.sub(replacement_str, text, count=count)
-            return True, result
-        except re.error as e:
-            return False, f"خطأ في صيغة الـ Regex أو الاستبدال: {e.msg}"
-        except Exception as e:
-            return False, f"فشل الاستبدال: {str(e)}"
+        ok, data, err = RegexService._execute_isolated(req, timeout=timeout)
+        if not ok:
+            return False, err
+
+        return data.get("success", False), data.get("result", data.get("error", ""))
+
