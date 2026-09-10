@@ -11,6 +11,9 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA temp_store = MEMORY")
     return conn
 
+get_db_connection = get_connection
+
+
 
 def initialize_database():
     conn = get_connection()
@@ -333,9 +336,46 @@ def initialize_database():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_history_created ON api_history(created_at DESC, id DESC)")
 
+        # Phase 7: Create developer_projects table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS developer_projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                project_path TEXT NOT NULL UNIQUE,
+                language TEXT DEFAULT '',
+                framework TEXT DEFAULT '',
+                description TEXT DEFAULT '',
+                is_favorite INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dev_proj_fav ON developer_projects(is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_dev_proj_path ON developer_projects(project_path)")
+
+        # Phase 7: Create terminal_commands table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS terminal_commands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                command TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                category TEXT DEFAULT 'General',
+                project_id INTEGER,
+                is_favorite INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (project_id) REFERENCES developer_projects(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_term_cmd_cat ON terminal_commands(category)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_term_cmd_fav ON terminal_commands(is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_term_cmd_proj ON terminal_commands(project_id)")
+
         conn.commit()
     finally:
         conn.close()
+
 
 
 init_db = initialize_database

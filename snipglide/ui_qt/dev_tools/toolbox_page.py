@@ -16,8 +16,11 @@ from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
 from snipglide.ui_qt.dev_tools.api_tester_widget import ApiTesterWidget
 from snipglide.ui_qt.dev_tools.git_tools_widget import GitToolsWidget
 from snipglide.ui_qt.dev_tools.ai_coding_widget import AICodingWidget
+from snipglide.ui_qt.dev_tools.projects_widget import ProjectsWidget
+from snipglide.ui_qt.dev_tools.command_library_widget import CommandLibraryWidget
 
 class DevToolboxPageQt(QWidget):
+
 
 
     toast_signal = Signal(str, bool)
@@ -118,8 +121,10 @@ class DevToolboxPageQt(QWidget):
         self.api_widget = ApiTesterWidget(parent=self)
         self.git_widget = GitToolsWidget(parent=self)
         self.ai_coding_widget = AICodingWidget(parent=self)
+        self.projects_widget = ProjectsWidget(parent=self)
+        self.commands_widget = CommandLibraryWidget(parent=self)
 
-        # Add all 12 sub-tools
+        # Add all 14 sub-tools
         self.tabs.addTab(self.json_widget, "📋 JSON")
         self.tabs.addTab(self.b64_widget, "🔒 Base64")
         self.tabs.addTab(self.url_widget, "🌐 URL")
@@ -132,6 +137,9 @@ class DevToolboxPageQt(QWidget):
         self.tabs.addTab(self.api_widget, "🌐 API Tester")
         self.tabs.addTab(self.git_widget, "🐙 Git Tools")
         self.tabs.addTab(self.ai_coding_widget, "🤖 AI Coding")
+        self.tabs.addTab(self.projects_widget, "📁 Projects")
+        self.tabs.addTab(self.commands_widget, "⌨️ Commands")
+
 
         main_layout.addWidget(self.tabs, stretch=1)
 

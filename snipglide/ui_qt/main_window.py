@@ -346,6 +346,12 @@ class MainWindowQt(QMainWindow):
             elif data == "dev_ai_coding":
                 self.sidebar.select_page("DevToolbox")
                 self.dev_toolbox_page.tabs.setCurrentIndex(11)
+            elif data == "dev_projects":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(12)
+            elif data == "dev_commands":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(13)
             elif data == "seed_demo":
                 self.chat_page._seed_demo_data()
         elif kind == "copy_snippet":
