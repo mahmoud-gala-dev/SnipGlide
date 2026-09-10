@@ -9,6 +9,7 @@ from snipglide.ui_qt.dev_tools.text_utils_widget import TextUtilsWidget
 from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
 from snipglide.ui_qt.dev_tools.api_tester_widget import ApiTesterWidget
 from snipglide.ui_qt.dev_tools.git_tools_widget import GitToolsWidget
+from snipglide.ui_qt.dev_tools.ai_coding_widget import AICodingWidget
 
 __all__ = [
     "DevToolboxPageQt",
@@ -23,5 +24,7 @@ __all__ = [
     "RegexPlaygroundWidget",
     "ApiTesterWidget",
     "GitToolsWidget",
+    "AICodingWidget",
 ]
+
 

@@ -149,6 +149,7 @@ class CommandPaletteQt(QDialog):
             ("action", "dev_api", "🌐 أدوات المطورين: مختبر واجهات برمجة التطبيقات (REST API Tester)"),
             ("action", "dev_api_saved", "📁 أدوات المطورين: مكتبة طلبات API المحفوظة (Saved API Requests)"),
             ("action", "dev_git", "🐙 أدوات المطورين: فاحص مستودعات Git ومولد رسائل Commit (Git Tools)"),
+            ("action", "dev_ai_coding", "🤖 أدوات المطورين: منصة المساعد البرمجي بالذكاء الاصطناعي (AI Coding Platform)"),
             ("action", "capture_full", "📸 التقاط الشاشة بالكامل وحفظها (Ctrl + Print)"),
             ("action", "capture_area", "✂️ تحديد جزء من الشاشة واقتصاصه (Win + Print)"),
             ("action", "new_snippet", "➕ إنشاء اختصار جديد"),

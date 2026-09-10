@@ -64,96 +64,54 @@ def sort_models(model_names: list[str]) -> list[str]:
     return sorted(model_names, key=get_priority, reverse=True)
 
 def call_ai_completion(prompt: str, api_key: str, provider: str = "gemini", temperature: float = 0.7) -> str:
-    if not api_key:
+    if not api_key and provider not in ("ollama", "local"):
         clean = prompt.replace("Rewrite the following text to make it professional:", "").strip()
         clean = clean.replace("Correct grammar for:", "").strip()
         clean = clean.replace("Rewrite this in friendly tone:", "").strip()
         clean = clean.replace("Rewrite the text:", "").strip()
         return f"{clean} (Optimized by AI)"
         
-    if provider != "gemini":
-        return f"[AI response placeholder] {prompt}"
+    try:
+        from snipglide.models.ai_models import AIProviderConfig, ProviderType
+        from snipglide.services.ai_providers import get_ai_provider
 
-    model_list = get_available_models(api_key)
-    if model_list:
-        model_list = sort_models(model_list)
-    else:
-        model_list = [
-            "models/gemini-3.6-flash",
-            "models/gemini-3.5-flash",
-            "models/gemini-2.0-flash",
-            "models/gemini-2.0-flash-exp",
-            "models/gemini-1.5-flash",
-            "models/gemini-1.5-flash-latest",
-            "models/gemini-1.5-pro",
-            "models/gemini-pro",
-        ]
-        
-    last_error = None
-    for model_resource in model_list:
-        model_name = model_resource if model_resource.startswith("models/") else f"models/{model_resource}"
-        
-        for api_version in ["v1", "v1beta"]:
-            try:
-                url = f"https://generativelanguage.googleapis.com/{api_version}/{model_name}:generateContent?key={api_key}"
-                headers = {"Content-Type": "application/json"}
-                payload = {
-                    "contents": [{"parts": [{"text": prompt}]}],
-                    "generationConfig": {
-                        "temperature": temperature
-                    }
-                }
-                req = urllib.request.Request(url, data=json.dumps(payload).encode("utf-8"), headers=headers, method="POST")
-                with urllib.request.urlopen(req, timeout=10) as res:
-                    response = _read_json_response(res)
-                    return response["candidates"][0]["content"]["parts"][0]["text"].strip()
-            except urllib.error.HTTPError as e:
-                try:
-                    err_content = _read_error_text(e)
-                    err_json = json.loads(err_content)
-                    msg = err_json.get("error", {}).get("message", str(e))
-                    last_error = f"API Error ({e.code}) on {model_name} ({api_version}): {msg}"
-                except Exception:
-                    last_error = f"HTTP Error {e.code} on {model_name} ({api_version}): {e.reason}"
-                logger.warning(f"Candidate {model_name} ({api_version}) failed: {last_error}")
-                
-                # If we hit quota limit (429), return the retry duration to user immediately instead of trying next models
-                if e.code == 429:
-                    return f"[AI Rate Limit (429): {msg}]"
-                    
-                if e.code == 404:
-                    continue
-                else:
-                    return f"[AI Error: {last_error}]"
-            except Exception as e:
-                last_error = f"Connection failed on {model_name} ({api_version}): {e}"
-                logger.warning(last_error)
-                continue
-                
-    return f"[AI Error: All models failed. Last error: {last_error}]"
+        p_type = ProviderType.GEMINI
+        if provider == "openai":
+            p_type = ProviderType.OPENAI
+        elif provider in ("ollama", "local"):
+            p_type = ProviderType.OLLAMA
+        elif provider == "openai_compatible":
+            p_type = ProviderType.OPENAI_COMPATIBLE
+
+        config = AIProviderConfig(
+            provider_type=p_type,
+            api_key=api_key,
+            temperature=temperature,
+        )
+        ai_prov = get_ai_provider(config)
+        return ai_prov.generate(prompt)
+    except Exception as e:
+        logger.error(f"Error in call_ai_completion: {e}")
+        return f"[AI Error: {e}]"
 
 def test_ai_key(api_key: str, provider: str = "gemini") -> tuple[bool, str]:
-    if not api_key:
+    if not api_key and provider not in ("ollama", "local"):
         return False, "API key is empty."
     try:
-        if provider == "gemini":
-            url = f"https://generativelanguage.googleapis.com/v1/models?key={api_key}"
-            req = urllib.request.Request(url, method="GET")
-            with urllib.request.urlopen(req, timeout=8) as res:
-                data = _read_json_response(res)
-                models = data.get("models", [])
-                if models:
-                    return True, "API Key is valid! Connection established successfully."
-                return False, "No models returned by Gemini API."
-        else:
-            return True, "Mock provider connection valid."
-    except urllib.error.HTTPError as e:
-        try:
-            err_content = _read_error_text(e)
-            err_json = json.loads(err_content)
-            msg = err_json.get("error", {}).get("message", str(e))
-            return False, f"API Error ({e.code}): {msg}"
-        except Exception:
-            return False, f"HTTP Error {e.code}: {e.reason}"
+        from snipglide.models.ai_models import AIProviderConfig, ProviderType
+        from snipglide.services.ai_providers import get_ai_provider
+
+        p_type = ProviderType.GEMINI
+        if provider == "openai":
+            p_type = ProviderType.OPENAI
+        elif provider in ("ollama", "local"):
+            p_type = ProviderType.OLLAMA
+        elif provider == "openai_compatible":
+            p_type = ProviderType.OPENAI_COMPATIBLE
+
+        config = AIProviderConfig(provider_type=p_type, api_key=api_key)
+        ai_prov = get_ai_provider(config)
+        return ai_prov.test_connection()
     except Exception as e:
         return False, f"Connection failed: {e}"
+
