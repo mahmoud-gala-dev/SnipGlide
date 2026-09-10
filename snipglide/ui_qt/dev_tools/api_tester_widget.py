@@ -1086,3 +1086,18 @@ class ApiTesterWidget(QWidget):
         if QMessageBox.question(self, "مسح السجل", "هل أنت متأكد من مسح سجل العمليات بالكامل؟") == QMessageBox.Yes:
             ApiRepository.clear_history()
             list_w.clear()
+
+    def cleanup(self):
+        """Safely cancel and disconnect running network worker thread."""
+        if hasattr(self, "current_worker") and self.current_worker:
+            self.current_worker.cancel()
+            try:
+                self.current_worker.result_ready.disconnect()
+            except Exception:
+                pass
+            self.current_worker.wait(300)
+            self.current_worker = None
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)

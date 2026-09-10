@@ -91,111 +91,87 @@ class VideoRecorderWorker(QThread):
         logger.info(f"Starting video recording thread: FPS={self.fps}, Region={self.region}, File={self.output_file}")
 
         try:
+            import mss
+
             self._start_time = time.time()
             self._last_tick_emit = self._start_time
 
-            while True:
-                with self._lock:
-                    if not self._running:
+            with mss.mss() as sct:
+                # Determine monitor capture box
+                if self.region and self.region.isValid():
+                    capture_box = {
+                        "left": int(self.region.x()),
+                        "top": int(self.region.y()),
+                        "width": int(self.region.width()),
+                        "height": int(self.region.height()),
+                    }
+                else:
+                    # Primary screen monitor
+                    capture_box = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+
+                while True:
+                    with self._lock:
+                        if not self._running:
+                            break
+                        paused = self._paused
+                        cancelled = self._cancelled
+
+                    if cancelled:
                         break
-                    paused = self._paused
-                    cancelled = self._cancelled
 
-                if cancelled:
-                    break
+                    loop_start = time.time()
 
-                loop_start = time.time()
+                    if not paused:
+                        # 1. Thread-safe screen grab via mss (direct OS memory buffer)
+                        sct_img = sct.grab(capture_box)
+                        frame_raw = np.array(sct_img)  # BGRA 4-channel array
+                        frame_arr = frame_raw[:, :, :3].copy()  # Convert to BGR for OpenCV
 
-                if not paused:
-                    # 1. Grab screen frame
-                    screen = QGuiApplication.primaryScreen()
-                    if not screen:
-                        time.sleep(0.02)
-                        continue
+                        h, w = frame_arr.shape[:2]
 
-                    # Grab full screen window
-                    pixmap = screen.grabWindow(0)
-                    if pixmap.isNull():
-                        time.sleep(0.02)
-                        continue
+                        # OpenCV requires dimensions to be divisible by 2
+                        if w % 2 != 0:
+                            w -= 1
+                        if h % 2 != 0:
+                            h -= 1
 
-                    # 2. Crop to selected area if specified
-                    crop_rect = None
-                    if self.region and self.region.isValid():
-                        screen_rect = screen.geometry()
-                        crop_rect = self.region.intersected(screen_rect)
-                        if crop_rect.width() >= 10 and crop_rect.height() >= 10:
-                            pixmap = pixmap.copy(crop_rect)
-                        else:
-                            crop_rect = None
+                        if w <= 0 or h <= 0:
+                            time.sleep(0.02)
+                            continue
 
-                    # 3. Draw cursor if enabled
-                    if self.show_cursor:
-                        try:
-                            cur_pos = QCursor.pos()
-                            painter = QPainter(pixmap)
-                            painter.setRenderHint(QPainter.Antialiasing, True)
+                        if frame_arr.shape[1] != w or frame_arr.shape[0] != h:
+                            frame_arr = frame_arr[:h, :w]
 
-                            pt_x = cur_pos.x() - (crop_rect.x() if crop_rect else 0)
-                            pt_y = cur_pos.y() - (crop_rect.y() if crop_rect else 0)
+                        # 2. Draw smooth cursor highlight if enabled (using thread-safe cv2 operations)
+                        if self.show_cursor:
+                            try:
+                                cur_pos = QCursor.pos()
+                                rel_x = cur_pos.x() - capture_box["left"]
+                                rel_y = cur_pos.y() - capture_box["top"]
 
-                            if 0 <= pt_x <= pixmap.width() and 0 <= pt_y <= pixmap.height():
-                                # Subtle translucent amber glow around cursor
-                                painter.setPen(Qt.NoPen)
-                                painter.setBrush(QBrush(QColor(245, 158, 11, 85)))
-                                painter.drawEllipse(QPoint(pt_x, pt_y), 18, 18)
+                                if 0 <= rel_x < w and 0 <= rel_y < h:
+                                    # Amber translucent outer glow (BGR: 11, 158, 245)
+                                    overlay = frame_arr.copy()
+                                    cv2.circle(overlay, (rel_x, rel_y), 18, (11, 158, 245), -1)
+                                    cv2.addWeighted(overlay, 0.35, frame_arr, 0.65, 0, frame_arr)
 
-                                # Crisp cursor pointer ring
-                                painter.setPen(QPen(QColor(255, 255, 255, 240), 2))
-                                painter.setBrush(QBrush(QColor(239, 68, 68, 230)))
-                                painter.drawEllipse(QPoint(pt_x, pt_y), 6, 6)
+                                    # Crisp inner pointer dot (BGR red: 68, 68, 239) with white border
+                                    cv2.circle(frame_arr, (rel_x, rel_y), 6, (255, 255, 255), 2)
+                                    cv2.circle(frame_arr, (rel_x, rel_y), 5, (68, 68, 239), -1)
+                            except Exception as e:
+                                logger.debug(f"Cursor rendering skipped: {e}")
 
-                            painter.end()
-                        except Exception as e:
-                            logger.debug(f"Cursor rendering skipped: {e}")
+                        # 3. Initialize VideoWriter and save thumbnail on first frame
+                        if first_frame:
+                            width = w
+                            height = h
 
-                    # 4. Convert QPixmap to BGR numpy array for OpenCV
-                    qimg = pixmap.toImage().convertToFormat(QImage.Format.Format_BGR888)
-                    w = qimg.width()
-                    h = qimg.height()
+                            try:
+                                cv2.imwrite(str(self.thumb_file), frame_arr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+                            except Exception as e:
+                                logger.warning(f"Could not save video thumbnail: {e}")
 
-                    # OpenCV requires dimensions to be divisible by 2
-                    if w % 2 != 0:
-                        w -= 1
-                    if h % 2 != 0:
-                        h -= 1
-
-                    if w <= 0 or h <= 0:
-                        time.sleep(0.02)
-                        continue
-
-                    ptr = qimg.constBits()
-                    frame_arr = np.ndarray(shape=(qimg.height(), qimg.width(), 3), dtype=np.uint8, buffer=ptr)
-
-                    if frame_arr.shape[1] != w or frame_arr.shape[0] != h:
-                        frame_arr = frame_arr[:h, :w]
-
-                    # 5. Initialize VideoWriter and save thumbnail on first frame
-                    if first_frame:
-                        width = w
-                        height = h
-
-                        try:
-                            pixmap.save(str(self.thumb_file), "JPEG", quality=85)
-                        except Exception as e:
-                            logger.warning(f"Could not save video thumbnail: {e}")
-
-                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                        writer = cv2.VideoWriter(
-                            str(self.output_file),
-                            fourcc,
-                            float(self.fps),
-                            (width, height)
-                        )
-
-                        if not writer.isOpened():
-                            logger.warning("mp4v codec failed, trying XVID fallback...")
-                            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                             writer = cv2.VideoWriter(
                                 str(self.output_file),
                                 fourcc,
@@ -203,26 +179,36 @@ class VideoRecorderWorker(QThread):
                                 (width, height)
                             )
 
-                        if not writer.isOpened():
-                            self.error_signal.emit("تعذر تهيئة مشفر الفيديو (VideoWriter). تأكد من توفر مشغلات الوسائط.")
-                            return
+                            if not writer.isOpened():
+                                logger.warning("mp4v codec failed, trying XVID fallback...")
+                                fourcc = cv2.VideoWriter_fourcc(*'XVID')
+                                writer = cv2.VideoWriter(
+                                    str(self.output_file),
+                                    fourcc,
+                                    float(self.fps),
+                                    (width, height)
+                                )
 
-                        first_frame = False
+                            if not writer.isOpened():
+                                self.error_signal.emit("تعذر تهيئة مشفر الفيديو (VideoWriter). تأكد من توفر مشغلات الوسائط.")
+                                return
 
-                    # 6. Write frame to file
-                    writer.write(frame_arr)
-                    frames_recorded += 1
+                            first_frame = False
 
-                    self._elapsed_time += frame_interval
+                        # 4. Write frame to MP4 stream
+                        writer.write(frame_arr)
+                        frames_recorded += 1
 
-                    now = time.time()
-                    if now - self._last_tick_emit >= 0.4:
-                        self.tick_signal.emit(self._elapsed_time)
-                        self._last_tick_emit = now
+                        self._elapsed_time += frame_interval
 
-                elapsed_loop = time.time() - loop_start
-                sleep_needed = max(0.002, frame_interval - elapsed_loop)
-                time.sleep(sleep_needed)
+                        now = time.time()
+                        if now - self._last_tick_emit >= 0.4:
+                            self.tick_signal.emit(self._elapsed_time)
+                            self._last_tick_emit = now
+
+                    elapsed_loop = time.time() - loop_start
+                    sleep_needed = max(0.002, frame_interval - elapsed_loop)
+                    time.sleep(sleep_needed)
 
         except Exception as e:
             logger.error(f"Error during video recording: {e}", exc_info=True)

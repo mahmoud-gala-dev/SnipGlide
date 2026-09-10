@@ -606,6 +606,11 @@ class MainWindowQt(QMainWindow):
                 2000
             )
         else:
+            if hasattr(self, "dev_toolbox_page") and self.dev_toolbox_page:
+                try:
+                    self.dev_toolbox_page.cleanup()
+                except Exception:
+                    pass
             event.accept()
 
     def _on_esc_pressed(self):

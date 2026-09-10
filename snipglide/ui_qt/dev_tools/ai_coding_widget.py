@@ -556,3 +556,30 @@ class AICodingWidget(QWidget):
 
         settings["ai_provider"] = self.cb_provider.currentText().lower()
         save_settings(settings)
+
+    def cleanup(self):
+        """Safely cancel and disconnect running AI workers."""
+        if hasattr(self, "worker") and self.worker:
+            self.worker.cancel()
+            try:
+                self.worker.chunk_received.disconnect()
+                self.worker.completed.disconnect()
+                self.worker.error_occurred.disconnect()
+            except Exception:
+                pass
+            self.worker.wait(300)
+            self.worker = None
+
+        for w_attr in ("_conn_worker", "_models_worker"):
+            w = getattr(self, w_attr, None)
+            if w and w.isRunning():
+                try:
+                    w.task_completed.disconnect()
+                except Exception:
+                    pass
+                w.wait(200)
+                setattr(self, w_attr, None)
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)

@@ -403,6 +403,23 @@ class RegexPlaygroundWidget(QWidget):
                 if self.toast_callback:
                     self.toast_callback(f"تم تحميل النمط '{selected.name}' بنجاح! 📂", False)
 
+    def cleanup(self):
+        """Cooperative cancellation and safe shutdown of background regex worker."""
+        if hasattr(self, "_debounce_timer") and self._debounce_timer:
+            self._debounce_timer.stop()
+        if hasattr(self, "_current_worker") and self._current_worker:
+            self._current_worker.cancel()
+            try:
+                self._current_worker.result_ready.disconnect()
+            except Exception:
+                pass
+            self._current_worker.wait(250)
+            self._current_worker = None
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)
+
 
 class SavedRegexLibraryDialog(QDialog):
     def __init__(self, parent: Optional[QWidget] = None):

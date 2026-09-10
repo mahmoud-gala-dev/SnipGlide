@@ -208,3 +208,19 @@ class DevToolboxPageQt(QWidget):
         self.api_url_input = self.api_widget.url_edit
         self.api_method_combo = self.api_widget.method_combo
         self.api_send_btn = self.api_widget.btn_send
+
+    def cleanup(self):
+        """Cascades worker thread cleanup to all active dev tool widgets."""
+        for w in (getattr(self, "regex_widget", None),
+                  getattr(self, "api_widget", None),
+                  getattr(self, "ai_widget", None),
+                  getattr(self, "git_widget", None)):
+            if w and hasattr(w, "cleanup"):
+                try:
+                    w.cleanup()
+                except Exception:
+                    pass
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)

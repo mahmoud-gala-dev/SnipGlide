@@ -97,9 +97,17 @@ class SnipGlideTrayIcon(QSystemTrayIcon):
 
         # Exit
         act_exit = menu.addAction("🚪 إغلاق التطبيق نهائياً")
-        act_exit.triggered.connect(QApplication.instance().quit)
+        act_exit.triggered.connect(self._quit_app)
 
         self.setContextMenu(menu)
+
+    def _quit_app(self):
+        if self.main_window and hasattr(self.main_window, "dev_toolbox_page") and self.main_window.dev_toolbox_page:
+            try:
+                self.main_window.dev_toolbox_page.cleanup()
+            except Exception:
+                pass
+        QApplication.instance().quit()
 
     def _on_tray_activated(self, reason):
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):

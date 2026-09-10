@@ -55,7 +55,7 @@ def run_suite():
     print(f"Total Test Cases to Execute: {suite.countTestCases()}")
     print("-" * 70)
 
-    runner = unittest.TextTestRunner(verbosity=2)
+    runner = unittest.TextTestRunner(stream=sys.stdout, verbosity=2)
     start_time = time.time()
     result = runner.run(suite)
     elapsed = time.time() - start_time

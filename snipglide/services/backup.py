@@ -23,58 +23,50 @@ def export_backup(file_path: str) -> bool:
         with get_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute("SELECT * FROM groups")
-            groups = [dict(row) for row in cursor.fetchall()]
-            
-            cursor.execute("SELECT * FROM snippets")
-            snippets = [dict(row) for row in cursor.fetchall()]
-            
-            cursor.execute("SELECT * FROM autocorrect")
-            autocorrect = [dict(row) for row in cursor.fetchall()]
+            def _fetch_table(table_name: str) -> list[dict]:
+                try:
+                    cursor.execute(f"SELECT * FROM {table_name}")
+                    return [dict(row) for row in cursor.fetchall()]
+                except Exception:
+                    return []
 
-            # Optional Developer Suite Tables
-            saved_regexes = []
-            try:
-                cursor.execute("SELECT * FROM saved_regexes")
-                saved_regexes = [dict(row) for row in cursor.fetchall()]
-            except Exception:
-                pass
-
-            saved_api = []
-            try:
-                cursor.execute("SELECT * FROM saved_api_requests")
-                saved_api = [dict(row) for row in cursor.fetchall()]
-            except Exception:
-                pass
-
-            dev_projects = []
-            try:
-                cursor.execute("SELECT * FROM developer_projects")
-                dev_projects = [dict(row) for row in cursor.fetchall()]
-            except Exception:
-                pass
-
-            terminal_cmds = []
-            try:
-                cursor.execute("SELECT * FROM terminal_commands")
-                terminal_cmds = [dict(row) for row in cursor.fetchall()]
-            except Exception:
-                pass
+            groups = _fetch_table("groups")
+            snippets = _fetch_table("snippets")
+            autocorrect = _fetch_table("autocorrect")
+            note_categories = _fetch_table("note_categories")
+            notes = _fetch_table("notes")
+            note_settings = _fetch_table("note_settings")
+            chat_note_sections = _fetch_table("chat_note_sections")
+            chat_notes = _fetch_table("chat_notes")
+            screenshot_folders = _fetch_table("screenshot_folders")
+            screenshots = _fetch_table("screenshots")
+            saved_regexes = _fetch_table("saved_regexes")
+            saved_api = _fetch_table("saved_api_requests")
+            dev_projects = _fetch_table("developer_projects")
+            terminal_cmds = _fetch_table("terminal_commands")
+            usage_history = _fetch_table("usage_history")
             
             backup_data = {
-                "version": "1.1",
+                "version": "2.0",
                 "groups": groups,
                 "snippets": snippets,
                 "autocorrect": autocorrect,
+                "note_categories": note_categories,
+                "notes": notes,
+                "note_settings": note_settings,
+                "chat_note_sections": chat_note_sections,
+                "chat_notes": chat_notes,
+                "screenshot_folders": screenshot_folders,
+                "screenshots": screenshots,
                 "saved_regexes": saved_regexes,
                 "saved_api_requests": saved_api,
                 "developer_projects": dev_projects,
                 "terminal_commands": terminal_cmds,
+                "usage_history": usage_history,
             }
             
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(backup_data, f, indent=4, ensure_ascii=False)
-
                 
             logger.info(f"Backup exported successfully to {file_path}")
             return True
@@ -93,6 +85,15 @@ def import_backup(file_path: str) -> bool:
         if not isinstance(backup_data, dict) or "snippets" not in backup_data or "groups" not in backup_data:
             logger.error("Invalid backup file: missing snippets or groups schema.")
             return False
+
+        # Create automatic pre-restore safety snapshot before modifying database
+        try:
+            from snipglide.core.config import BACKUP_DIR
+            safety_file = BACKUP_DIR / "pre_restore_safety_backup.json"
+            export_backup(str(safety_file))
+            logger.info(f"Pre-restore safety snapshot created at {safety_file}")
+        except Exception as e:
+            logger.warning(f"Could not create pre-restore safety snapshot: {e}")
             
         # Collect API requests for post-commit secure processing
         _pending_api_requests = backup_data.get("saved_api_requests", []) if "saved_api_requests" in backup_data else []
@@ -100,6 +101,7 @@ def import_backup(file_path: str) -> bool:
         with get_connection() as conn:
             cursor = conn.cursor()
             
+            # Atomic restore of core snippet tables
             cursor.execute("DELETE FROM snippets")
             cursor.execute("DELETE FROM groups")
             cursor.execute("DELETE FROM autocorrect")
@@ -109,9 +111,12 @@ def import_backup(file_path: str) -> bool:
                 if not isinstance(g, dict):
                     continue
                 cursor.execute("""
-                    INSERT INTO groups (id, name, description) 
-                    VALUES (?, ?, ?)
-                """, (g.get("id"), g.get("name"), g.get("description")))
+                    INSERT INTO groups (id, name, description, icon, color, is_collapsed) 
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (
+                    g.get("id"), g.get("name"), g.get("description", ""),
+                    g.get("icon", "G"), g.get("color", "#2563eb"), g.get("is_collapsed", 0)
+                ))
                 
             for s in backup_data.get("snippets", []):
                 if not isinstance(s, dict):
@@ -120,24 +125,98 @@ def import_backup(file_path: str) -> bool:
                     INSERT INTO snippets (
                         id, shortcut, replacement, group_id, tags, description, language,
                         enabled, favorite, usage_counter, created_date, modified_date,
-                        hotkey, regex_enabled, app_filter, window_filter, notes
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        hotkey, regex_enabled, app_filter, window_filter, notes, snippet_type
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     s.get("id"), s.get("shortcut"), s.get("replacement"), s.get("group_id"),
                     s.get("tags", ""), s.get("description", ""), s.get("language", "Plain Text"),
                     s.get("enabled", 1), s.get("favorite", 0), s.get("usage_counter", 0),
-                    s.get("created_date"), s.get("modified_date"), s.get("hotkey"),
-                    s.get("regex_enabled", 0), s.get("app_filter"), s.get("window_filter"),
-                    s.get("notes")
+                    s.get("created_date"), s.get("modified_date"), s.get("hotkey", ""),
+                    s.get("regex_enabled", 0), s.get("app_filter", ""), s.get("window_filter", ""),
+                    s.get("notes", ""), s.get("snippet_type", "Text")
                 ))
                 
             for a in backup_data.get("autocorrect", []):
                 if not isinstance(a, dict):
                     continue
                 cursor.execute("""
-                    INSERT INTO autocorrect (typo, correction) 
+                    INSERT OR REPLACE INTO autocorrect (typo, correction) 
                     VALUES (?, ?)
                 """, (a.get("typo"), a.get("correction")))
+
+            # Restore Note Categories & Notes if present
+            if "note_categories" in backup_data and backup_data["note_categories"]:
+                cursor.execute("DELETE FROM notes")
+                cursor.execute("DELETE FROM note_categories")
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('notes', 'note_categories')")
+                for nc in backup_data.get("note_categories", []):
+                    if isinstance(nc, dict) and nc.get("name"):
+                        cursor.execute("""
+                            INSERT INTO note_categories (id, name, icon, color, description)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (nc.get("id"), nc.get("name"), nc.get("icon", "N"), nc.get("color", "#2563eb"), nc.get("description", "")))
+
+                for n in backup_data.get("notes", []):
+                    if isinstance(n, dict) and n.get("title"):
+                        cursor.execute("""
+                            INSERT INTO notes (id, title, content, category_id, created_date, modified_date, color, pinned)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            n.get("id"), n.get("title"), n.get("content", ""), n.get("category_id"),
+                            n.get("created_date"), n.get("modified_date"), n.get("color", "#2563eb"), n.get("pinned", 0)
+                        ))
+
+            if "note_settings" in backup_data:
+                for ns in backup_data.get("note_settings", []):
+                    if isinstance(ns, dict) and ns.get("key"):
+                        cursor.execute("INSERT OR REPLACE INTO note_settings (key, value) VALUES (?, ?)", (ns["key"], ns.get("value", "")))
+
+            # Restore Chat Note Sections & Chat Notes if present
+            if "chat_note_sections" in backup_data and backup_data["chat_note_sections"]:
+                cursor.execute("DELETE FROM chat_notes")
+                cursor.execute("DELETE FROM chat_note_sections")
+                cursor.execute("DELETE FROM sqlite_sequence WHERE name IN ('chat_notes', 'chat_note_sections')")
+                for cns in backup_data.get("chat_note_sections", []):
+                    if isinstance(cns, dict) and cns.get("name"):
+                        cursor.execute("""
+                            INSERT INTO chat_note_sections (id, name, icon, color)
+                            VALUES (?, ?, ?, ?)
+                        """, (cns.get("id"), cns.get("name"), cns.get("icon", "💬"), cns.get("color", "#25D366")))
+
+                for cn in backup_data.get("chat_notes", []):
+                    if isinstance(cn, dict) and cn.get("content"):
+                        cursor.execute("""
+                            INSERT INTO chat_notes (id, content, created_at, is_starred, section_id, tags, color)
+                            VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            cn.get("id"), cn.get("content"), cn.get("created_at"), cn.get("is_starred", 0),
+                            cn.get("section_id", 1), cn.get("tags", ""), cn.get("color", "#25D366")
+                        ))
+
+            # Restore Screenshot Folders & Screenshots if present
+            if "screenshot_folders" in backup_data and backup_data["screenshot_folders"]:
+                for sf in backup_data.get("screenshot_folders", []):
+                    if isinstance(sf, dict) and sf.get("name"):
+                        cursor.execute("SELECT id FROM screenshot_folders WHERE name = ?", (sf["name"],))
+                        if not cursor.fetchone():
+                            cursor.execute("INSERT INTO screenshot_folders (name, color) VALUES (?, ?)", (sf["name"], sf.get("color", "#3b82f6")))
+
+            if "screenshots" in backup_data and backup_data["screenshots"]:
+                for sc in backup_data.get("screenshots", []):
+                    if isinstance(sc, dict) and sc.get("file_path"):
+                        cursor.execute("SELECT id FROM screenshots WHERE file_path = ?", (sc["file_path"],))
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                INSERT INTO screenshots (
+                                    file_path, filename, capture_type, width, height, file_size,
+                                    created_at, is_favorite, note, duration, thumbnail_path, folder
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                sc["file_path"], sc.get("filename", ""), sc.get("capture_type", "full"),
+                                sc.get("width", 0), sc.get("height", 0), sc.get("file_size", 0),
+                                sc.get("created_at"), sc.get("is_favorite", 0), sc.get("note", ""),
+                                sc.get("duration", 0.0), sc.get("thumbnail_path", ""), sc.get("folder", "العامة")
+                            ))
 
             # Optional developer tools restoration (idempotent / non-destructive)
             if "saved_regexes" in backup_data:
@@ -147,14 +226,13 @@ def import_backup(file_path: str) -> bool:
                             cursor.execute("SELECT id FROM saved_regexes WHERE name = ?", (r["name"],))
                             if not cursor.fetchone():
                                 cursor.execute(
-                                    "INSERT INTO saved_regexes (name, pattern, test_text, description, category, tags, favorite) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                                    (r.get("name"), r.get("pattern"), r.get("test_text", ""), r.get("description", ""), r.get("category", "General"), r.get("tags", ""), r.get("favorite", 0)),
+                                    "INSERT INTO saved_regexes (name, pattern, description, flags, replacement, favorite) VALUES (?, ?, ?, ?, ?, ?)",
+                                    (r.get("name"), r.get("pattern"), r.get("description", ""), r.get("flags", ""), r.get("replacement", ""), r.get("favorite", 0)),
                                 )
                 except Exception:
                     pass
 
             # API requests: determine which ones are NOT already in DB (deduplicate check)
-            # Actual insertion happens AFTER conn.commit() to avoid locking conflict with ApiRepository.
             if _pending_api_requests:
                 _to_insert_api = []
                 try:

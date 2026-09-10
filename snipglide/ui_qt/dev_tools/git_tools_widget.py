@@ -456,3 +456,16 @@ class GitToolsWidget(QWidget):
 
     def _on_error(self, err: str):
         self.lbl_status.setText(f"❌ Error: {err}")
+
+    def cleanup(self):
+        """Safely cancel and wait for running Git workers."""
+        for w_attr in ("_worker_info", "_worker_commits", "_worker_diff"):
+            w = getattr(self, w_attr, None)
+            if w:
+                if w.isRunning():
+                    w.wait(1000)
+                setattr(self, w_attr, None)
+
+    def closeEvent(self, event):
+        self.cleanup()
+        super().closeEvent(event)
