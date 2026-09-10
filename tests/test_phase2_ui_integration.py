@@ -36,9 +36,10 @@ class TestPhase2UIIntegration(unittest.TestCase):
 
     def test_dev_toolbox_tabs_includes_regex_playground(self):
         page = DevToolboxPageQt()
-        # Verify 9 tabs total
-        self.assertEqual(page.tabs.count(), 9)
+        # Verify at least 9 tabs total (expanded in later phases)
+        self.assertGreaterEqual(page.tabs.count(), 9)
         # Verify Tab 8 is Regex Playground
+
         self.assertIn("Regex Playground", page.tabs.tabText(8))
         self.assertIsInstance(page.regex_widget, RegexPlaygroundWidget)
 
