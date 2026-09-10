@@ -93,6 +93,9 @@ The resulting executable will be created in `dist\SnipGlide.exe`.
 لمطالعة تفاصيل الأمان، التشفير، وعزل ReDoS:
 👉 **[راجع وثيقة الأمان والخصوصية SECURITY.md](SECURITY.md)**
 
+لمطالعة تفاصيل الاختبارات الشاملة (149 اختباراً) وكيفية تشغيلها:
+👉 **[راجع وثيقة الاختبارات وجودة الكود TESTING.md](TESTING.md)**
+
 ---
 
 <div align="center">

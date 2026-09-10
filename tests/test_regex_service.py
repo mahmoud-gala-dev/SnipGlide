@@ -228,9 +228,18 @@ class TestRegexServiceAndRepo(unittest.TestCase):
         # A classic ReDoS pattern: (a+)+$ on a string of 'a's ending with '!'
         pattern = r"(a+)+$"
         text = "a" * 28 + "!"
-        ok, matches, msg = RegexService.find_matches(pattern, text, timeout=0.3)
+        ok, matches, msg = RegexService.find_matches(pattern, text, timeout=0.5)
         self.assertFalse(ok)
-        self.assertIn("Catastrophic Backtracking", msg)
+        self.assertIn("Regex execution timed out", msg)
+        self.assertIn("excessive backtracking", msg)
+
+    def test_replace_catastrophic_backtracking_timeout(self):
+        pattern = r"(a+)+$"
+        text = "a" * 28 + "!"
+        ok, res = RegexService.replace(pattern, text, "REPLACED", timeout=0.5)
+        self.assertFalse(ok)
+        self.assertIn("Regex execution timed out", res)
+        self.assertIn("excessive backtracking", res)
 
 
 if __name__ == "__main__":

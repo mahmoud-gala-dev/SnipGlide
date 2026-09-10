@@ -249,16 +249,30 @@ class ApiClientService:
         method: str,
         url: str,
         headers: Optional[dict[str, str]] = None,
-        body_content: str = ""
+        body_content: str = "",
+        redact_secrets: bool = True,
     ) -> str:
-        """Generates standard cURL command line representation."""
-        parts = ["curl", "-X", method.upper(), f'"{url}"']
+        """
+        Generates standard cURL command line representation.
+        If redact_secrets is True (default), sensitive headers (Authorization, X-API-Key, etc.)
+        and sensitive query parameters are redacted with [REDACTED].
+        """
+        from snipglide.services.security import sanitize_url_query, is_sensitive_header
+
+        target_url = sanitize_url_query(url) if redact_secrets else url
+        parts = ["curl", "-X", method.upper(), f'"{target_url}"']
+
         for k, v in (headers or {}).items():
-            parts.append(f'-H "{k}: {v}"')
+            if redact_secrets and is_sensitive_header(k):
+                parts.append(f'-H "{k}: [REDACTED]"')
+            else:
+                parts.append(f'-H "{k}: {v}"')
+
         if body_content and method.upper() in ("POST", "PUT", "PATCH", "DELETE"):
             # Escape quotes
             escaped = body_content.replace('"', '\\"').replace("\n", "\\n")
             parts.append(f'-d "{escaped}"')
+
         return " ".join(parts)
 
     @staticmethod

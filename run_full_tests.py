@@ -26,6 +26,7 @@ def run_suite():
         "test_clipboard_regression.py",
         "test_smart_snippets.py",
         "test_api_client.py",
+        "test_api_tester.py",
         "test_git_tools.py",
         "test_ai_platform.py",
         "test_projects_and_commands.py",

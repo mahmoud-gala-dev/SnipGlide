@@ -3,7 +3,13 @@ from datetime import datetime
 from typing import Optional
 from snipglide.database.connection import get_connection
 from snipglide.models.api_request import ApiRequest, ApiHistoryEntry
-from snipglide.services.security import encrypt_secret, decrypt_secret, sanitize_url_query
+from snipglide.services.security import (
+    encrypt_secret,
+    decrypt_secret,
+    sanitize_url_query,
+    is_sensitive_header,
+    ENC_PREFIX,
+)
 from snipglide.utils.logger import logger
 
 
@@ -17,7 +23,8 @@ class ApiRepository:
         res = dict(auth_data)
         for k in ("token", "password", "value", "secret"):
             if k in res and isinstance(res[k], str) and res[k]:
-                res[k] = encrypt_secret(res[k])
+                if not res[k].startswith(ENC_PREFIX):
+                    res[k] = encrypt_secret(res[k])
         return res
 
     @staticmethod
@@ -27,7 +34,41 @@ class ApiRepository:
         res = dict(auth_data)
         for k in ("token", "password", "value", "secret"):
             if k in res and isinstance(res[k], str) and res[k]:
-                res[k] = decrypt_secret(res[k])
+                if res[k].startswith(ENC_PREFIX):
+                    res[k] = decrypt_secret(res[k])
+        return res
+
+    @staticmethod
+    def _encrypt_headers(headers: list) -> list:
+        if not headers:
+            return []
+        res = []
+        for h in headers:
+            if isinstance(h, dict):
+                item = dict(h)
+                key = str(item.get("key", "")).strip()
+                val = str(item.get("value", ""))
+                if is_sensitive_header(key) and val and not val.startswith(ENC_PREFIX):
+                    item["value"] = encrypt_secret(val)
+                res.append(item)
+            else:
+                res.append(h)
+        return res
+
+    @staticmethod
+    def _decrypt_headers(headers: list) -> list:
+        if not headers:
+            return []
+        res = []
+        for h in headers:
+            if isinstance(h, dict):
+                item = dict(h)
+                val = str(item.get("value", ""))
+                if val and val.startswith(ENC_PREFIX):
+                    item["value"] = decrypt_secret(val)
+                res.append(item)
+            else:
+                res.append(h)
         return res
 
     @staticmethod
@@ -57,13 +98,16 @@ class ApiRepository:
         raw_auth_data = _safe_json(row["auth_data_json"], {})
         decrypted_auth = ApiRepository._decrypt_auth_data(raw_auth_data)
 
+        raw_headers = _safe_json(row["headers_json"], [])
+        decrypted_headers = ApiRepository._decrypt_headers(raw_headers)
+
         return ApiRequest(
             id=row["id"],
             name=row["name"],
             method=row["method"],
             url=row["url"],
             params=_safe_json(row["params_json"], []),
-            headers=_safe_json(row["headers_json"], []),
+            headers=decrypted_headers,
             auth_type=row["auth_type"] or "none",
             auth_data=decrypted_auth,
             body_type=row["body_type"] or "none",
@@ -80,6 +124,7 @@ class ApiRepository:
         try:
             cursor = conn.cursor()
             secured_auth = ApiRepository._encrypt_auth_data(req.auth_data or {})
+            secured_headers = ApiRepository._encrypt_headers(req.headers or [])
             cursor.execute("""
                 INSERT INTO saved_api_requests (
                     name, method, url, params_json, headers_json,
@@ -91,7 +136,7 @@ class ApiRepository:
                 req.method,
                 req.url,
                 json.dumps(req.params or []),
-                json.dumps(req.headers or []),
+                json.dumps(secured_headers),
                 req.auth_type,
                 json.dumps(secured_auth),
                 req.body_type,
@@ -115,6 +160,7 @@ class ApiRepository:
         try:
             cursor = conn.cursor()
             secured_auth = ApiRepository._encrypt_auth_data(req.auth_data or {})
+            secured_headers = ApiRepository._encrypt_headers(req.headers or [])
             cursor.execute("""
                 UPDATE saved_api_requests SET
                     name = ?, method = ?, url = ?, params_json = ?, headers_json = ?,
@@ -126,7 +172,7 @@ class ApiRepository:
                 req.method,
                 req.url,
                 json.dumps(req.params or []),
-                json.dumps(req.headers or []),
+                json.dumps(secured_headers),
                 req.auth_type,
                 json.dumps(secured_auth),
                 req.body_type,

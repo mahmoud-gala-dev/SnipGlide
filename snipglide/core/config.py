@@ -66,10 +66,14 @@ def load_settings() -> dict:
             raw_key = default.get("ai_api_key", "")
             if raw_key and not raw_key.startswith("enc:v1:"):
                 from snipglide.services.security import encrypt_secret, decrypt_secret
-                enc_key = encrypt_secret(raw_key)
-                if decrypt_secret(enc_key) == raw_key:
-                    default["ai_api_key"] = enc_key
-                    save_settings(default)
+                try:
+                    enc_key = encrypt_secret(raw_key)
+                    # Verify encrypted value before replacing old setting
+                    if enc_key and enc_key.startswith("enc:v1:") and decrypt_secret(enc_key) == raw_key:
+                        default["ai_api_key"] = enc_key
+                        save_settings(default)
+                except Exception:
+                    pass  # Never delete original until encrypted value is successfully produced
 
             return default
         except Exception:

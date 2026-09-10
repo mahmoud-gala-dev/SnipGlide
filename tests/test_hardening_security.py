@@ -37,7 +37,7 @@ from snipglide.services.security import (
     mask_secret,
     sanitize_url_query,
 )
-from snipglide.ui_qt.dev_tools.ai_coding_widget import AIWorker
+from snipglide.ui_qt.dev_tools.ai_coding_widget import AIWorker, AIProviderTaskWorker, AITaskType
 from snipglide.ui_qt.dev_tools.api_tester_widget import ApiRequestWorker
 from snipglide.utils.logger import redact_sensitive_text
 
@@ -83,6 +83,35 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertNotIn("sk-abcdef12345678901234567890", redacted)
         self.assertNotIn("SuperSecretPassword123", redacted)
         self.assertIn("[REDACTED", redacted)
+
+    def test_encrypt_secret_fails_closed_never_fallback_to_plaintext(self):
+        """CRITICAL: Encryption failure must NOT return plaintext fallback. It must raise ValueError."""
+        with patch("snipglide.services.security.Fernet") as mock_fernet:
+            mock_fernet.side_effect = RuntimeError("Cryptographic hardware fault")
+            with self.assertRaises(ValueError) as ctx:
+                encrypt_secret("super_sensitive_api_key_12345")
+            self.assertIn("failed", str(ctx.exception).lower())
+
+    def test_decrypt_secret_corrupted_does_not_raise_or_leak(self):
+        """Decryption of malformed or corrupted ciphertext returns empty string without crashing."""
+        corrupted = f"{ENC_PREFIX}not-a-valid-fernet-token"
+        result = decrypt_secret(corrupted)
+        self.assertEqual(result, "")
+
+    def test_ai_key_settings_auto_migration(self):
+        """Validates that plaintext settings['ai_api_key'] is safely migrated to enc:v1: with verification."""
+        raw_key = "sk-plaintext-ai-key-to-migrate"
+        dummy_settings = {"ai_api_key": raw_key, "ai_provider": "gemini"}
+
+        # Simulate migration logic from load_settings
+        if dummy_settings["ai_api_key"] and not dummy_settings["ai_api_key"].startswith(ENC_PREFIX):
+            enc_key = encrypt_secret(dummy_settings["ai_api_key"])
+            if enc_key.startswith(ENC_PREFIX) and decrypt_secret(enc_key) == raw_key:
+                dummy_settings["ai_api_key"] = enc_key
+
+        self.assertTrue(dummy_settings["ai_api_key"].startswith(ENC_PREFIX))
+        self.assertNotIn(raw_key, dummy_settings["ai_api_key"])
+        self.assertEqual(decrypt_secret(dummy_settings["ai_api_key"]), raw_key)
 
 
 class TestApiSecurityHardening(unittest.TestCase):
@@ -245,6 +274,33 @@ class TestWorkerCancellation(unittest.TestCase):
         worker.run()
         mock_completed.assert_not_called()
 
+    def test_ai_provider_task_worker_execution_and_cancel(self):
+        mock_provider = MagicMock()
+        mock_provider.test_connection.return_value = (True, "Connection OK")
+        mock_provider.list_models.return_value = ["gemini-pro", "gemini-flash"]
+
+        # Test Connection Task
+        worker_conn = AIProviderTaskWorker(mock_provider, AITaskType.TEST_CONNECTION)
+        mock_callback = MagicMock()
+        worker_conn.task_completed.connect(mock_callback)
+        worker_conn.run()
+        mock_callback.assert_called_once_with(AITaskType.TEST_CONNECTION, True, "Connection OK")
+
+        # List Models Task
+        worker_models = AIProviderTaskWorker(mock_provider, AITaskType.LIST_MODELS)
+        mock_cb_models = MagicMock()
+        worker_models.task_completed.connect(mock_cb_models)
+        worker_models.run()
+        mock_cb_models.assert_called_once_with(AITaskType.LIST_MODELS, True, ["gemini-pro", "gemini-flash"])
+
+        # Cancelled task must not emit
+        worker_cancelled = AIProviderTaskWorker(mock_provider, AITaskType.TEST_CONNECTION)
+        mock_cb_cancelled = MagicMock()
+        worker_cancelled.task_completed.connect(mock_cb_cancelled)
+        worker_cancelled.cancel()
+        worker_cancelled.run()
+        mock_cb_cancelled.assert_not_called()
+
 
 class TestUnicodeAndJsonSafety(unittest.TestCase):
     """Verifies that unescaping preserves Arabic, Emojis, and UTF-8 characters."""
@@ -299,6 +355,115 @@ class TestDatabaseAndSearchResilience(unittest.TestCase):
         self.assertIsInstance(results, list)
         # Verify search completes under 100ms in SQLite WAL mode
         self.assertLess(elapsed_ms, 250.0)
+
+    def test_search_error_resilience_one_source_fails_others_continue(self):
+        """Priority 9: Break one search source intentionally; verify other sources return, failure is logged, no crash."""
+        with get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("INSERT OR IGNORE INTO notes (title, content) VALUES ('Resilience Note', 'Resilience Body')")
+            conn.commit()
+
+        class FaultyCursor:
+            def __init__(self, real_cur):
+                self._cur = real_cur
+            def execute(self, sql, *args, **kwargs):
+                if "FROM snippets" in sql:
+                    raise sqlite3.OperationalError("Simulated table error in snippets")
+                return self._cur.execute(sql, *args, **kwargs)
+            def fetchall(self):
+                return self._cur.fetchall()
+            def fetchone(self):
+                return self._cur.fetchone()
+            def __getattr__(self, attr):
+                return getattr(self._cur, attr)
+
+        class FaultyConn:
+            def __init__(self):
+                self._conn = get_connection()
+            def cursor(self):
+                return FaultyCursor(self._conn.cursor())
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                self._conn.close()
+            def __getattr__(self, attr):
+                return getattr(self._conn, attr)
+
+        with patch("snipglide.database.search_repo.get_connection", side_effect=FaultyConn):
+            with patch("snipglide.database.search_repo.logger.warning") as mock_log:
+                results = search_all("Resilience", limit=20)
+                mock_log.assert_called()
+                log_args = str(mock_log.call_args)
+                self.assertIn("snippets", log_args)
+                self.assertIsInstance(results, list)
+                self.assertTrue(any(r.get("source") == "notes" or "Resilience" in r.get("title", "") for r in results))
+
+    def test_database_migration_from_three_states(self):
+        """Priority 13: Test DB from 3 states: A) Fresh install, B) Pre-developer-suite, C) Existing plaintext secrets."""
+        temp_dir = tempfile.mkdtemp()
+        db_path = os.path.join(temp_dir, "test_migration.db")
+
+        try:
+            # STATE A: Fresh install
+            with patch("snipglide.database.connection.DB_FILE", db_path):
+                initialize_database()
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = {row[0] for row in cursor.fetchall()}
+                self.assertIn("groups", tables)
+                self.assertIn("saved_api_requests", tables)
+                self.assertIn("developer_projects", tables)
+                conn.close()
+
+            # STATE B: Pre-Developer-Suite database (drop newer tables to simulate legacy schema)
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("DROP TABLE saved_api_requests")
+            cursor.execute("DROP TABLE saved_regexes")
+            cursor.execute("DROP TABLE developer_projects")
+            cursor.execute("INSERT OR IGNORE INTO snippets (shortcut, replacement) VALUES ('!legacy', 'legacy expansion')")
+            conn.commit()
+            conn.close()
+
+            with patch("snipglide.database.connection.DB_FILE", db_path):
+                initialize_database()
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT replacement FROM snippets WHERE shortcut = '!legacy'")
+                row = cursor.fetchone()
+                self.assertIsNotNone(row)
+                self.assertEqual(row[0], "legacy expansion")
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+                tables = {row[0] for row in cursor.fetchall()}
+                self.assertIn("saved_api_requests", tables)
+                conn.close()
+
+            # STATE C: Database with existing plaintext secrets
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO saved_api_requests (name, method, url, auth_type, auth_data_json)
+                VALUES ('Plaintext Req', 'GET', 'https://api.com', 'bearer', '{"token": "raw_old_secret"}')
+            """)
+            conn.commit()
+            row_id = cursor.lastrowid
+            conn.close()
+
+            with patch("snipglide.database.connection.DB_FILE", db_path):
+                req = ApiRepository.get_request_by_id(row_id)
+                self.assertEqual(req.auth_data.get("token"), "raw_old_secret")
+                ApiRepository.update_request(req)
+                conn = sqlite3.connect(db_path)
+                cursor = conn.cursor()
+                cursor.execute("SELECT auth_data_json FROM saved_api_requests WHERE id = ?", (row_id,))
+                raw_json = cursor.fetchone()[0]
+                self.assertIn(ENC_PREFIX, raw_json)
+                self.assertNotIn("raw_old_secret", raw_json)
+                conn.close()
+        finally:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

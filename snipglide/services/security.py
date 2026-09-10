@@ -86,6 +86,7 @@ def encrypt_secret(plaintext: str) -> str:
     """
     Encrypts a sensitive string (API key, token, password) with a machine-bound Fernet key.
     Returns string prefixed with 'enc:v1:' or empty string if input was empty.
+    Fails closed: raises ValueError on any encryption error, never falling back to plaintext.
     """
     if not plaintext:
         return ""
@@ -97,13 +98,14 @@ def encrypt_secret(plaintext: str) -> str:
         cipher_bytes = f.encrypt(plaintext.encode("utf-8"))
         return f"{ENC_PREFIX}{cipher_bytes.decode('ascii')}"
     except Exception as e:
-        logger.error(f"Failed to encrypt secret: {e}")
-        return plaintext
+        logger.error(f"Failed to encrypt secret: {type(e).__name__}")
+        raise ValueError(f"Secret encryption failed: {e}")
 
 def decrypt_secret(ciphertext: str) -> str:
     """
     Decrypts an 'enc:v1:' prefixed string using the local machine key.
     If not encrypted (legacy plaintext), returns the input as-is for backward compatibility.
+    Never leaks the secret or ciphertext to logs on failure.
     """
     if not ciphertext:
         return ""
@@ -116,7 +118,7 @@ def decrypt_secret(ciphertext: str) -> str:
         plain_bytes = f.decrypt(raw_cipher.encode("ascii"))
         return plain_bytes.decode("utf-8")
     except Exception as e:
-        logger.error(f"Failed to decrypt secret: {e}")
+        logger.error(f"Failed to decrypt secret: {type(e).__name__}")
         return ""
 
 def mask_secret(secret: str) -> str:
@@ -132,9 +134,48 @@ def mask_secret(secret: str) -> str:
     suffix = s[-4:]
     return f"{prefix}••••••••{suffix}"
 
-def sanitize_url_query(url: str) -> str:
+# Centralized sensitive key definitions (case-insensitive)
+SENSITIVE_KEYS: set[str] = {
+    "api_key", "apikey", "api-key", "key",
+    "token", "access_token", "refresh_token", "id_token", "x-token", "x-auth-token",
+    "secret", "client_secret", "client-secret", "app_secret",
+    "password", "passwd", "pwd", "pin",
+    "authorization", "proxy-authorization", "auth",
+    "bearer", "credential", "credentials", "private_key"
+}
+
+SENSITIVE_QUERY_KEYS: set[str] = {
+    "api_key", "apikey", "api-key", "key",
+    "token", "access_token", "refresh_token", "id_token",
+    "secret", "client_secret", "password", "passwd", "pwd",
+    "auth", "authorization", "bearer"
+}
+
+SENSITIVE_HEADER_KEYS: set[str] = {
+    "authorization", "proxy-authorization",
+    "x-api-key", "api-key", "apikey",
+    "x-auth-token", "token", "secret", "x-token",
+    "x-access-token", "cookie", "set-cookie"
+}
+
+def is_sensitive_key(key: str) -> bool:
+    """Checks if a parameter or key name matches known sensitive key patterns."""
+    if not key:
+        return False
+    k = key.strip().lower()
+    return k in SENSITIVE_KEYS or any(s in k for s in ("password", "passwd", "secret", "api_key", "token"))
+
+def is_sensitive_header(header: str) -> bool:
+    """Checks if an HTTP header name matches known sensitive header patterns."""
+    if not header:
+        return False
+    h = header.strip().lower()
+    return h in SENSITIVE_HEADER_KEYS or any(s in h for s in ("auth", "token", "secret", "api-key", "apikey"))
+
+def sanitize_url_query(url: str, redact_text: str = "[REDACTED]") -> str:
     """
     Removes or redacts sensitive keys from URL query parameters (e.g. api_key, token, secret).
+    Preserves full URL structure including scheme, host, path, other query parameters, and fragments.
     """
     if not url or "?" not in url:
         return url
@@ -142,18 +183,42 @@ def sanitize_url_query(url: str) -> str:
         import urllib.parse
         parsed = urllib.parse.urlsplit(url)
         params = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
-        sensitive_keys = {
-            "api_key", "apikey", "key", "token", "access_token",
-            "auth", "secret", "password", "client_secret"
-        }
         cleaned = []
         for k, v in params:
-            if k.lower() in sensitive_keys:
-                cleaned.append((k, "[REDACTED]"))
+            if k.lower() in SENSITIVE_QUERY_KEYS:
+                cleaned.append((k, redact_text))
             else:
                 cleaned.append((k, v))
         new_query = urllib.parse.urlencode(cleaned)
         return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, new_query, parsed.fragment))
     except Exception:
         return url
+
+def sanitize_headers_dict(headers: dict[str, str], redact_text: str = "[REDACTED]") -> dict[str, str]:
+    """
+    Returns a copy of headers dict with sensitive authentication values redacted.
+    """
+    out = {}
+    for k, v in (headers or {}).items():
+        if is_sensitive_header(k):
+            out[k] = redact_text
+        else:
+            out[k] = v
+    return out
+
+def sanitize_log_text(text: str) -> str:
+    """
+    Sanitizes log messages or exception text to prevent leaking API keys, Bearer tokens, or passwords.
+    """
+    if not text:
+        return ""
+    import re
+    # Redact Bearer tokens
+    text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9_\-\.]{8,}", r"\1[REDACTED_TOKEN]", text)
+    # Redact Basic auth hashes
+    text = re.sub(r"(?i)(basic\s+)[A-Za-z0-9+/=]{10,}", r"\1[REDACTED_BASIC]", text)
+    # Redact common key=value query patterns
+    pattern = r"(?i)(api_key|apikey|api-key|key|token|access_token|refresh_token|secret|password)=([^&\s]+)"
+    text = re.sub(pattern, r"\1=[REDACTED]", text)
+    return text
 

@@ -108,16 +108,26 @@ class RegexService:
                 proc.wait(timeout=0.5)
             except Exception:
                 pass
-            return False, {}, "Regex execution timed out. Pattern may cause excessive Catastrophic Backtracking (ReDoS)."
+            return False, {}, "Regex execution timed out. The pattern may cause excessive backtracking."
         except Exception:
-            # Subprocess failed to launch (e.g. frozen exe fallback)
+            # Subprocess failed to launch (e.g. frozen exe or restricted environment fallback)
+            import concurrent.futures
             from snipglide.services.regex_worker import _handle_find, _handle_replace
             action = req_dict.get("action", "find")
-            if action == "replace":
-                res = _handle_replace(req_dict)
-            else:
-                res = _handle_find(req_dict)
-            return True, res, ""
+            handler = _handle_replace if action == "replace" else _handle_find
+
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            future = executor.submit(handler, req_dict)
+            try:
+                res = future.result(timeout=timeout)
+                executor.shutdown(wait=False)
+                return True, res, ""
+            except concurrent.futures.TimeoutError:
+                executor.shutdown(wait=False)
+                return False, {}, "Regex execution timed out. The pattern may cause excessive backtracking."
+            except Exception as ex:
+                executor.shutdown(wait=False)
+                return False, {}, f"Execution failed: {ex}"
 
     @staticmethod
     def find_matches(

@@ -216,6 +216,197 @@ class SavedApiRequestsDialog(QDialog):
             self._load_requests()
 
 
+class SaveApiRequestDialog(QDialog):
+    """Modal dialog for saving API requests with explicit credential security opt-in."""
+    def __init__(self, default_name: str, collections: list[str], parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("حفظ الطلب في المكتبة")
+        self.setMinimumWidth(440)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #111b21;
+                color: #f0f2f5;
+            }
+            QLabel {
+                color: #e2e8f0;
+                font-size: 13px;
+            }
+            QLineEdit, QComboBox {
+                background-color: #202c33;
+                border: 1px solid #3b4a54;
+                border-radius: 6px;
+                padding: 6px 10px;
+                color: #f0f2f5;
+                font-size: 13px;
+            }
+            QCheckBox {
+                color: #f0f2f5;
+                font-size: 13px;
+                spacing: 8px;
+            }
+            QPushButton {
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+        """)
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        layout.addWidget(QLabel("اسم الطلب (Request Name):"))
+        self.name_edit = QLineEdit(default_name)
+        layout.addWidget(self.name_edit)
+
+        layout.addWidget(QLabel("المجموعة (Collection):"))
+        self.collection_combo = QComboBox()
+        self.collection_combo.setEditable(True)
+        colls = list(collections) if collections else ["General"]
+        if "General" not in colls:
+            colls.insert(0, "General")
+        self.collection_combo.addItems(colls)
+        layout.addWidget(self.collection_combo)
+
+        self.chk_save_creds = QCheckBox("حفظ بيانات الاعتماد والمفاتيح السرية بأمان (Save credentials securely)")
+        self.chk_save_creds.setChecked(False)  # DEFAULT = OFF!
+        layout.addWidget(self.chk_save_creds)
+
+        hint = QLabel("افتراضياً: يتم إزالة التوكن وكلمات المرور لحماية خصوصيتك وأمانك ما لم يتم تفعيل الخيار أعلاه وتشفيرها.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        layout.addWidget(hint)
+
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+        btn_cancel = QPushButton("إلغاء")
+        btn_cancel.setStyleSheet("background-color: #334155; color: white;")
+        btn_cancel.clicked.connect(self.reject)
+        btn_save = QPushButton("حفظ الطلب 💾")
+        btn_save.setStyleSheet("background-color: #16a34a; color: white;")
+        btn_save.clicked.connect(self.accept)
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_save)
+        layout.addLayout(btn_box)
+
+    def get_data(self) -> tuple[str, str, bool]:
+        return (
+            self.name_edit.text().strip() or "API Request",
+            self.collection_combo.currentText().strip() or "General",
+            self.chk_save_creds.isChecked(),
+        )
+
+
+class CopyCurlDialog(QDialog):
+    """Modal dialog for generating cURL with redaction by default and explicit confirmation for credentials."""
+    def __init__(self, method: str, url: str, headers: dict, body: str, parent=None):
+        super().__init__(parent)
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+
+        self.setWindowTitle("نسخ أمر cURL")
+        self.setMinimumWidth(560)
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #111b21;
+                color: #f0f2f5;
+            }
+            QLabel {
+                color: #e2e8f0;
+                font-size: 13px;
+            }
+            QCheckBox {
+                color: #f0f2f5;
+                font-size: 13px;
+            }
+            QPlainTextEdit {
+                background-color: #1a232a;
+                border: 1px solid #3b4a54;
+                border-radius: 6px;
+                color: #a7f3d0;
+                font-family: 'Consolas', monospace;
+                font-size: 12px;
+                padding: 8px;
+            }
+            QPushButton {
+                border-radius: 6px;
+                padding: 6px 16px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+        """)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(12)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        layout.addWidget(QLabel("معاينة أمر cURL:"))
+        self.preview_edit = QPlainTextEdit()
+        self.preview_edit.setReadOnly(True)
+        self.preview_edit.setFixedHeight(120)
+        layout.addWidget(self.preview_edit)
+
+        self.chk_include_creds = QCheckBox("تضمين بيانات الاعتماد والمفاتيح السرية (Include credentials in cURL)")
+        self.chk_include_creds.setChecked(False)  # DEFAULT = OFF!
+        self.chk_include_creds.toggled.connect(self._on_creds_toggled)
+        layout.addWidget(self.chk_include_creds)
+
+        self.lbl_warning = QLabel("افتراضياً: يتم حجب الرموز السرية [REDACTED] لمنع تسريب بياناتك.")
+        self.lbl_warning.setStyleSheet("color: #38bdf8; font-size: 11px;")
+        layout.addWidget(self.lbl_warning)
+
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+        btn_cancel = QPushButton("إلغاء")
+        btn_cancel.setStyleSheet("background-color: #334155; color: white;")
+        btn_cancel.clicked.connect(self.reject)
+        btn_copy = QPushButton("📋 نسخ إلى الحافظة")
+        btn_copy.setStyleSheet("background-color: #2563eb; color: white;")
+        btn_copy.clicked.connect(self._copy_and_close)
+        btn_box.addWidget(btn_cancel)
+        btn_box.addWidget(btn_copy)
+        layout.addLayout(btn_box)
+
+        self._update_preview()
+
+    def _update_preview(self):
+        include_creds = self.chk_include_creds.isChecked()
+        cmd = ApiClientService.generate_curl_command(
+            self.method, self.url, self.headers, self.body, redact_secrets=not include_creds
+        )
+        self.preview_edit.setPlainText(cmd)
+
+    def _on_creds_toggled(self, checked: bool):
+        if checked:
+            reply = QMessageBox.warning(
+                self,
+                "تحذير أمني",
+                "⚠️ تحذير: سيتم تضمين الرموز السرية ومفاتيح الـ API في أمر cURL كنص صريح!\nهل أنت متأكد من المتابعة؟",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                self.chk_include_creds.blockSignals(True)
+                self.chk_include_creds.setChecked(False)
+                self.chk_include_creds.blockSignals(False)
+                return
+            self.lbl_warning.setText("⚠️ تنبيه: أمر cURL يحتوي الآن على بيانات اعتماد صريحة.")
+            self.lbl_warning.setStyleSheet("color: #f87171; font-size: 11px; font-weight: bold;")
+        else:
+            self.lbl_warning.setText("افتراضياً: يتم حجب الرموز السرية [REDACTED] لمنع تسريب بياناتك.")
+            self.lbl_warning.setStyleSheet("color: #38bdf8; font-size: 11px;")
+        self._update_preview()
+
+    def _copy_and_close(self):
+        text = self.preview_edit.toPlainText().strip()
+        if text:
+            copy_to_clipboard(text)
+            QMessageBox.information(self, "تم النسخ", "تم نسخ أمر cURL إلى الحافظة بنجاح! 📋")
+            self.accept()
+
+
 class ApiTesterWidget(QWidget):
     """
     Main REST API Tester widget integrated inside SnipGlide Developer Tools.
@@ -627,6 +818,14 @@ class ApiTesterWidget(QWidget):
         self.status_badge.setText("⏳ جاري الإرسال...")
         self.status_badge.setStyleSheet("background-color: #172554; color: #60a5fa; font-weight: bold; border-radius: 6px; padding: 4px 10px;")
 
+        # Cancel any previous active worker safely
+        if self.current_worker and self.current_worker.isRunning():
+            self.current_worker.cancel()
+            try:
+                self.current_worker.result_ready.disconnect()
+            except Exception:
+                pass
+
         # Launch Worker
         self.current_worker = ApiRequestWorker(method, final_url, req_headers, body_bytes)
         self.current_worker.result_ready.connect(self._on_response_received)
@@ -742,9 +941,8 @@ class ApiTesterWidget(QWidget):
         final_url = ApiClientService.build_final_url(raw_url, params, auth_type, auth_data)
         headers = ApiClientService.build_headers(self.headers_table.get_pairs(), auth_type, auth_data, self.body_type_combo.currentText().lower())
         body = self.body_edit.toPlainText() if self.body_type_combo.currentText() != "None" else ""
-        curl = ApiClientService.generate_curl_command(method, final_url, headers, body)
-        copy_to_clipboard(curl)
-        QMessageBox.information(self, "تم النسخ", "تم نسخ أمر cURL إلى الحافظة بنجاح! 📋")
+        dlg = CopyCurlDialog(method, final_url, headers, body, self)
+        dlg.exec()
 
     def save_current_request(self):
         url = self.url_edit.text().strip()
@@ -752,24 +950,46 @@ class ApiTesterWidget(QWidget):
             QMessageBox.warning(self, "تنبيه", "يرجى إدخال الرابط قبل الحفظ.")
             return
 
-        from PySide6.QtWidgets import QInputDialog
-        name, ok = QInputDialog.getText(self, "حفظ الطلب", "أدخل اسماً لهذا الطلب:", text=self.url_edit.text().split("?")[0].split("/")[-1] or "API Request")
-        if not (ok and name.strip()):
+        collections = ApiRepository.get_collections()
+        default_name = self.url_edit.text().split("?")[0].split("/")[-1] or "API Request"
+        dlg = SaveApiRequestDialog(default_name, collections, self)
+        if dlg.exec() != QDialog.Accepted:
             return
 
+        name, collection, save_creds_securely = dlg.get_data()
         auth_type, auth_data = self._get_auth_payload()
+        headers = self.headers_table.get_pairs()
+
+        if not save_creds_securely:
+            # Strip credentials if user did not opt in
+            from snipglide.services.security import is_sensitive_header
+            cleaned_auth = dict(auth_data)
+            for k in ("token", "password", "value", "secret"):
+                if k in cleaned_auth:
+                    cleaned_auth[k] = ""
+            auth_data = cleaned_auth
+
+            cleaned_headers = []
+            for h in headers:
+                k = str(h.get("key", "")).strip()
+                if not is_sensitive_header(k):
+                    cleaned_headers.append(h)
+                else:
+                    cleaned_headers.append({"enabled": h.get("enabled", True), "key": k, "value": ""})
+            headers = cleaned_headers
+
         req = ApiRequest(
             id=self.current_saved_id,
-            name=name.strip(),
+            name=name,
             method=self.method_combo.currentText(),
             url=url,
             params=self.params_table.get_pairs(),
-            headers=self.headers_table.get_pairs(),
+            headers=headers,
             auth_type=auth_type,
             auth_data=auth_data,
             body_type=self.body_type_combo.currentText().lower(),
             body_content=self.body_edit.toPlainText(),
-            collection_name="General"
+            collection_name=collection
         )
         try:
             if self.current_saved_id is None:

@@ -75,38 +75,64 @@ class AIWorker(QThread):
                 self.error_occurred.emit(str(e))
 
 
-class AIConnectionTestWorker(QThread):
-    """Background worker for testing AI provider connectivity without freezing the UI."""
+class AITaskType:
+    TEST_CONNECTION = "TEST_CONNECTION"
+    LIST_MODELS = "LIST_MODELS"
+
+
+class AIProviderTaskWorker(QThread):
+    """
+    Reusable background worker for executing AI provider operations (Test Connection, List Models)
+    asynchronously without freezing or blocking the Qt UI thread.
+    """
+    task_completed = Signal(str, bool, object)  # task_type, success, result_data
+
+    def __init__(self, provider: BaseAIProvider, task_type: str):
+        super().__init__()
+        self.provider = provider
+        self.task_type = task_type
+        self.is_cancelled = False
+        self.finished.connect(self.deleteLater)
+
+    def cancel(self):
+        self.is_cancelled = True
+
+    def run(self):
+        if self.is_cancelled:
+            return
+        try:
+            if self.task_type == AITaskType.TEST_CONNECTION:
+                ok, msg = self.provider.test_connection()
+                if not self.is_cancelled:
+                    self.task_completed.emit(self.task_type, ok, msg)
+            elif self.task_type == AITaskType.LIST_MODELS:
+                models = self.provider.list_models()
+                if not self.is_cancelled:
+                    self.task_completed.emit(self.task_type, bool(models), models)
+            else:
+                if not self.is_cancelled:
+                    self.task_completed.emit(self.task_type, False, f"Unknown task type: {self.task_type}")
+        except Exception as e:
+            if not self.is_cancelled:
+                self.task_completed.emit(self.task_type, False, str(e))
+
+
+class AIConnectionTestWorker(AIProviderTaskWorker):
+    """Compatibility subclass for testing connectivity."""
     result_ready = Signal(bool, str)
 
     def __init__(self, provider: BaseAIProvider):
-        super().__init__()
-        self.provider = provider
-        self.finished.connect(self.deleteLater)
-
-    def run(self):
-        try:
-            ok, msg = self.provider.test_connection()
-            self.result_ready.emit(ok, msg)
-        except Exception as e:
-            self.result_ready.emit(False, str(e))
+        super().__init__(provider, AITaskType.TEST_CONNECTION)
+        self.task_completed.connect(lambda t, ok, msg: self.result_ready.emit(ok, str(msg)))
 
 
-class AIModelListWorker(QThread):
-    """Background worker for querying provider model lists without freezing the UI."""
+class AIModelListWorker(AIProviderTaskWorker):
+    """Compatibility subclass for querying model lists."""
     models_ready = Signal(list)
 
     def __init__(self, provider: BaseAIProvider):
-        super().__init__()
-        self.provider = provider
-        self.finished.connect(self.deleteLater)
-
-    def run(self):
-        try:
-            models = self.provider.list_models()
-            self.models_ready.emit(models)
-        except Exception:
-            self.models_ready.emit([])
+        super().__init__(provider, AITaskType.LIST_MODELS)
+        self.task_completed.connect(lambda t, ok, data: self.models_ready.emit(data if isinstance(data, list) else []))
 
 
 class AICodingWidget(QWidget):
@@ -355,18 +381,20 @@ class AICodingWidget(QWidget):
         cfg = self._get_current_config()
         provider = get_ai_provider(cfg)
         self.btn_test.setEnabled(False)
-        self.btn_test.setText("⏳ ...")
+        self.btn_test.setText("⏳ Testing...")
 
-        def on_test_done(ok: bool, msg: str):
+        def on_task_completed(task_type: str, ok: bool, msg: object):
+            if task_type != AITaskType.TEST_CONNECTION:
+                return
             self.btn_test.setEnabled(True)
             self.btn_test.setText("🔌 Test")
             if ok:
-                QMessageBox.information(self, "Connection Successful", msg)
+                QMessageBox.information(self, "Connection Successful", str(msg))
             else:
-                QMessageBox.warning(self, "Connection Failed", msg)
+                QMessageBox.warning(self, "Connection Failed", str(msg))
 
-        self._conn_worker = AIConnectionTestWorker(provider)
-        self._conn_worker.result_ready.connect(on_test_done)
+        self._conn_worker = AIProviderTaskWorker(provider, AITaskType.TEST_CONNECTION)
+        self._conn_worker.task_completed.connect(on_task_completed)
         self._conn_worker.start()
 
     def _refresh_models(self):
@@ -375,18 +403,20 @@ class AICodingWidget(QWidget):
         self.btn_refresh_models.setEnabled(False)
         self.btn_refresh_models.setText("⏳")
 
-        def on_models_ready(models: list):
+        def on_models_completed(task_type: str, ok: bool, models: object):
+            if task_type != AITaskType.LIST_MODELS:
+                return
             self.btn_refresh_models.setEnabled(True)
             self.btn_refresh_models.setText("🔄")
-            if models:
+            if ok and isinstance(models, list) and models:
                 self.cb_model.clear()
                 self.cb_model.addItems(models)
                 QMessageBox.information(self, "Models Updated", f"Retrieved {len(models)} model(s).")
             else:
                 QMessageBox.warning(self, "Models", "Could not fetch models. Check connection/API key.")
 
-        self._models_worker = AIModelListWorker(provider)
-        self._models_worker.models_ready.connect(on_models_ready)
+        self._models_worker = AIProviderTaskWorker(provider, AITaskType.LIST_MODELS)
+        self._models_worker.task_completed.connect(on_models_completed)
         self._models_worker.start()
 
     def _run_action(self):
@@ -488,8 +518,16 @@ class AICodingWidget(QWidget):
         from snipglide.services.security import decrypt_secret
         settings = load_settings()
         stored_key = settings.get("ai_api_key", "")
-        decrypted_key = decrypt_secret(stored_key)
-        self.txt_api_key.setText(decrypted_key)
+        if stored_key:
+            try:
+                decrypted_key = decrypt_secret(stored_key)
+                self.txt_api_key.setText(decrypted_key)
+            except Exception:
+                self.txt_api_key.setText("")
+        else:
+            self.txt_api_key.setText("")
+        self.txt_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+
         prov = settings.get("ai_provider", "gemini").lower()
         if "openai" in prov:
             self.cb_provider.setCurrentIndex(1)
@@ -503,6 +541,18 @@ class AICodingWidget(QWidget):
         from snipglide.services.security import encrypt_secret
         settings = load_settings()
         key_text = self.txt_api_key.text().strip()
-        settings["ai_api_key"] = encrypt_secret(key_text) if key_text else ""
+        if key_text:
+            try:
+                settings["ai_api_key"] = encrypt_secret(key_text)
+            except Exception as e:
+                QMessageBox.critical(
+                    self,
+                    "خطأ أمني",
+                    f"فشل تشفير مفتاح API: {e}\nتم إلغاء الحفظ لمنع حفظ المفتاح كنص صريح (Fail-Closed)."
+                )
+                return
+        else:
+            settings["ai_api_key"] = ""
+
         settings["ai_provider"] = self.cb_provider.currentText().lower()
         save_settings(settings)
