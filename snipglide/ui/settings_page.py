@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from snipglide.ui.dialogs.security_dialog import SecurityDialog
-from snipglide.services.security import hash_password
+from snipglide.services.security import hash_password, encrypt_secret, decrypt_secret
 
 class SettingsPage(ctk.CTkFrame):
     def __init__(self, parent, settings_dict: dict, save_callback, **kwargs):
@@ -156,7 +156,8 @@ class SettingsPage(ctk.CTkFrame):
         ctk.CTkLabel(tab, text="AI Secret API Key:").pack(pady=(15, 2), anchor="w", padx=20)
         self.ai_key_entry = ctk.CTkEntry(tab, show="*", width=350)
         self.ai_key_entry.pack(pady=2, anchor="w", padx=20)
-        self.ai_key_entry.insert(0, self.settings_dict.get("ai_api_key", ""))
+        _stored_key = self.settings_dict.get("ai_api_key", "")
+        self.ai_key_entry.insert(0, decrypt_secret(_stored_key) if _stored_key else "")
         
         self.test_key_btn = ctk.CTkButton(
             tab,
@@ -223,7 +224,16 @@ class SettingsPage(ctk.CTkFrame):
         self.settings_dict["lock_on_startup"] = bool(self.lock_startup_switch.get())
 
         self.settings_dict["ai_provider"] = self.ai_provider_var.get()
-        self.settings_dict["ai_api_key"] = self.ai_key_entry.get().strip()
+        _raw_key = self.ai_key_entry.get().strip()
+        if _raw_key:
+            try:
+                self.settings_dict["ai_api_key"] = encrypt_secret(_raw_key)
+            except Exception as _enc_err:
+                import tkinter.messagebox as _mb
+                _mb.showerror("Security Error", f"Failed to encrypt API key: {_enc_err}\nSave cancelled (Fail-Closed).")
+                return
+        else:
+            self.settings_dict["ai_api_key"] = ""
         self.settings_dict["ai_temperature"] = float(self.ai_temp_var.get())
 
         self.save_callback()

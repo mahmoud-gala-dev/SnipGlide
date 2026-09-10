@@ -14,6 +14,7 @@ from snipglide.database.group_repo import get_all_groups, add_group
 from snipglide.ui.widgets.code_editor import CodeEditor
 from snipglide.ui.dialogs.group_dialog import GroupDialog
 from snipglide.services.ai import call_ai_completion
+from snipglide.services.security import decrypt_secret
 from snipglide.utils.logger import logger
 
 class SnippetEditorView(ctk.CTkFrame):
@@ -217,7 +218,7 @@ class SnippetEditorView(ctk.CTkFrame):
         
     def _run_ai_assist(self, mode: str):
         settings = self.settings_provider()
-        api_key = settings.get("ai_api_key", "")
+        api_key = decrypt_secret(settings.get("ai_api_key", ""))
         provider = settings.get("ai_provider", "gemini")
         
         text = self.editor.get_text()

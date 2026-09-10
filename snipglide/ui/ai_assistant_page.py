@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import threading
 from snipglide.services.ai import call_ai_completion
+from snipglide.services.security import decrypt_secret
 from snipglide.models.snippet import Snippet
 from snipglide.database.snippet_repo import add_snippet, get_snippet_by_shortcut
 
@@ -94,7 +95,7 @@ class AIAssistantPage(ctk.CTkFrame):
             return
             
         settings = self.settings_provider()
-        api_key = settings.get("ai_api_key", "")
+        api_key = decrypt_secret(settings.get("ai_api_key", ""))
         provider = settings.get("ai_provider", "gemini")
         temperature = float(settings.get("ai_temperature", 0.7))
         
