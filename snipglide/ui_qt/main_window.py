@@ -23,6 +23,7 @@ from snipglide.ui_qt.floating_chat_head import FloatingChatHead
 from snipglide.ui_qt.web_dev_dialog import WebDevDialogQt
 from snipglide.ui_qt.notepad_page import NotepadPageQt
 from snipglide.ui_qt.screenshots_page import ScreenshotsPageQt
+from snipglide.ui_qt.dev_toolbox_page import DevToolboxPageQt
 from snipglide.services.exporter_importer import (
     export_data_to_json, import_data_from_json, export_snippets_to_csv
 )
@@ -88,7 +89,12 @@ class MainWindowQt(QMainWindow):
         self.pages["Dashboard"] = self.dashboard_page
         self.stack.addWidget(self.dashboard_page)
 
-        # 2. Snippets
+        # 2. Developer Toolbox
+        self.dev_toolbox_page = DevToolboxPageQt(toast_callback=self.toast, parent=self)
+        self.pages["DevToolbox"] = self.dev_toolbox_page
+        self.stack.addWidget(self.dev_toolbox_page)
+
+        # 3. Snippets
         self.snippets_page = SnippetEditorViewQt(
             toast_callback=self.toast,
             snippets_changed_callback=self._on_snippets_changed,
@@ -294,6 +300,30 @@ class MainWindowQt(QMainWindow):
                 self.export_json()
             elif data == "import_data":
                 self.import_json()
+            elif data == "dev_json":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(0)
+            elif data == "dev_base64":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(1)
+            elif data == "dev_url":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(2)
+            elif data == "dev_jwt":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(3)
+            elif data == "dev_uuid":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(4)
+            elif data == "dev_timestamp":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(5)
+            elif data == "dev_hash":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(6)
+            elif data == "dev_text":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(7)
             elif data == "seed_demo":
                 self.chat_page._seed_demo_data()
         elif kind == "copy_snippet":
@@ -409,6 +439,7 @@ class MainWindowQt(QMainWindow):
         nav_menu = menu.addMenu("🚀 التنقل السريع")
         nav_menu.setStyleSheet(menu_style)
         nav_dash = nav_menu.addAction("📊 لوحة التحكم (Dashboard)")
+        nav_dev = nav_menu.addAction("🛠️ أدوات المطورين (Dev Toolbox)")
         nav_snip = nav_menu.addAction("✂️ إدارة الاختصارات (Snippets)")
         nav_note = nav_menu.addAction("📝 الملاحظات العادية (Notes)")
         nav_chat = nav_menu.addAction("💬 شات نوت الواتساب (Chat Notes)")
@@ -456,6 +487,8 @@ class MainWindowQt(QMainWindow):
             self.toggle_floating_chat_head()
         elif action == nav_dash:
             self.sidebar.select_page("Dashboard")
+        elif action == nav_dev:
+            self.sidebar.select_page("DevToolbox")
         elif action == nav_snip:
             self.sidebar.select_page("Snippets")
         elif action == nav_note:

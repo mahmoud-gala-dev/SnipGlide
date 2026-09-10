@@ -71,6 +71,7 @@ class SidebarQt(QFrame):
 
         pages = [
             ("Dashboard", "📊 لوحة التحكم (Dashboard)", "#2563eb"),
+            ("DevToolbox", "🛠️ أدوات المطورين (Dev Toolbox)", "#3b82f6"),
             ("Snippets", "✂️ الاختصارات (Snippets)", "#16a34a"),
             ("Notes", "📝 الملاحظات (Notes)", "#f59e0b"),
             ("ChatNotes", "💬 شات نوت (Chat Notes)", "#25D366"),

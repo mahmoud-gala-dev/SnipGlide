@@ -128,6 +128,7 @@ class CommandPaletteQt(QDialog):
     def _load_items(self):
         self._all_items = [
             ("nav", "Dashboard", "📊 الانتقال إلى: لوحة التحكم (Dashboard)"),
+            ("nav", "DevToolbox", "🛠️ الانتقال إلى: أدوات المطورين (Developer Toolbox)"),
             ("nav", "Snippets", "✂️ الانتقال إلى: محرر الاختصارات (Snippets)"),
             ("nav", "Notes", "📝 الانتقال إلى: الملاحظات العادية (Notes)"),
             ("nav", "ChatNotes", "💬 الانتقال إلى: شات نوت (Chat Notes)"),
@@ -135,6 +136,13 @@ class CommandPaletteQt(QDialog):
             ("nav", "Screenshots", "📸 الانتقال إلى: لقطات الشاشة (Screenshots)"),
             ("nav", "Search", "🔍 الانتقال إلى: البحث الموحد (Search)"),
             ("nav", "Clipboard", "📋 الانتقال إلى: سجل الحافظة (Clipboard)"),
+            ("action", "dev_json", "📋 أدوات المطورين: معالج وتنسيق JSON (Beautify / Validate)"),
+            ("action", "dev_jwt", "🎫 أدوات المطورين: فك تشفير توكن JWT (JWT Decoder)"),
+            ("action", "dev_base64", "🔒 أدوات المطورين: تشفير وفك تشفير Base64"),
+            ("action", "dev_uuid", "🆔 أدوات المطورين: توليد معرفات UUID v4"),
+            ("action", "dev_timestamp", "⏰ أدوات المطورين: محول التوقيت والـ Timestamp"),
+            ("action", "dev_hash", "#️⃣ أدوات المطورين: مولد الهاش والتشفير (Hash Generator)"),
+            ("action", "dev_text", "🔤 أدوات المطورين: معالجة النصوص وحالات الأحرف (Text Utils)"),
             ("action", "capture_full", "📸 التقاط الشاشة بالكامل وحفظها (Ctrl + Print)"),
             ("action", "capture_area", "✂️ تحديد جزء من الشاشة واقتصاصه (Win + Print)"),
             ("action", "new_snippet", "➕ إنشاء اختصار جديد"),
