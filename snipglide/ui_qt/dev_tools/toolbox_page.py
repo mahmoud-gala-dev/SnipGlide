@@ -14,8 +14,10 @@ from snipglide.ui_qt.dev_tools.hash_widget import HashGeneratorWidget
 from snipglide.ui_qt.dev_tools.text_utils_widget import TextUtilsWidget
 from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
 from snipglide.ui_qt.dev_tools.api_tester_widget import ApiTesterWidget
+from snipglide.ui_qt.dev_tools.git_tools_widget import GitToolsWidget
 
 class DevToolboxPageQt(QWidget):
+
     toast_signal = Signal(str, bool)
 
     def __init__(self, toast_callback: Optional[Callable[[str, bool], None]] = None, parent: Optional[QWidget] = None):
@@ -112,8 +114,9 @@ class DevToolboxPageQt(QWidget):
         self.text_widget = TextUtilsWidget(toast_callback=emit_toast, parent=self)
         self.regex_widget = RegexPlaygroundWidget(toast_callback=emit_toast, parent=self)
         self.api_widget = ApiTesterWidget(parent=self)
+        self.git_widget = GitToolsWidget(parent=self)
 
-        # Add all 10 sub-tools
+        # Add all 11 sub-tools
         self.tabs.addTab(self.json_widget, "📋 JSON")
         self.tabs.addTab(self.b64_widget, "🔒 Base64")
         self.tabs.addTab(self.url_widget, "🌐 URL")
@@ -124,6 +127,7 @@ class DevToolboxPageQt(QWidget):
         self.tabs.addTab(self.text_widget, "🔤 Text Utilities")
         self.tabs.addTab(self.regex_widget, "🔍 Regex Playground")
         self.tabs.addTab(self.api_widget, "🌐 API Tester")
+        self.tabs.addTab(self.git_widget, "🐙 Git Tools")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
