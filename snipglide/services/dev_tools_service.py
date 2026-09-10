@@ -7,13 +7,30 @@ import hashlib
 import re
 from typing import Optional, Any, Union
 
+_ESCAPE_MAP: dict[str, str] = {
+    '\\"': '"',
+    "\\'": "'",
+    "\\\\": "\\",
+    "\\/": "/",
+    "\\b": "\b",
+    "\\f": "\f",
+    "\\n": "\n",
+    "\\r": "\r",
+    "\\t": "\t",
+}
+
+_ESCAPE_PATTERN: re.Pattern[str] = re.compile(
+    r'(\\["\'\\/bfnrt]|\\u[0-9a-fA-F]{4}|\\U[0-9a-fA-F]{8})'
+)
+
+
 class JsonTools:
     @staticmethod
     def beautify(text: str, indent: int = 2) -> tuple[bool, str, Optional[dict[str, Any]]]:
         """
         Parses and formats JSON with specified indentation.
         Returns: (success, result_or_error_msg, error_details_dict)
-        error_details_dict: {"line": int, "column": int, "msg": str} if error
+        error_details_dict: {"line": int, "column": int, "msg": str} if error occurs.
         """
         if not text or not text.strip():
             return False, "النص البرمجي لـ JSON فارغ.", {"line": 1, "column": 1, "msg": "Empty text"}
@@ -31,7 +48,7 @@ class JsonTools:
             err_str = f"خطأ في تحليل JSON: السطر {e.lineno}، العمود {e.colno} - {e.msg}"
             return False, err_str, err_details
         except Exception as e:
-            return False, f"خطأ غير متوقع: {str(e)}", None
+            return False, f"خطأ غير متوقع في معالجة JSON: {str(e)}", None
 
     @staticmethod
     def minify(text: str) -> tuple[bool, str, Optional[dict[str, Any]]]:
@@ -47,7 +64,7 @@ class JsonTools:
                 "line": e.lineno, "column": e.colno, "msg": e.msg
             }
         except Exception as e:
-            return False, f"خطأ غير متوقع: {str(e)}", None
+            return False, f"خطأ غير متوقع في معالجة JSON: {str(e)}", None
 
     @staticmethod
     def validate(text: str) -> tuple[bool, str, Optional[dict[str, Any]]]:
@@ -83,29 +100,66 @@ class JsonTools:
     @staticmethod
     def escape(text: str) -> str:
         """Escapes special characters for embedding in string literals."""
-        # Dump as JSON string and slice off outer quotes
-        return json.dumps(text)[1:-1]
+        if not text:
+            return ""
+        # Dump as JSON string and slice off outer quotes to preserve proper escaping
+        return json.dumps(text, ensure_ascii=False)[1:-1]
 
     @staticmethod
     def unescape(text: str) -> tuple[bool, str]:
-        """Unescapes a previously escaped string."""
+        """
+        Safely unescapes strings containing escape sequences (\\n, \\t, \\", \\\\, \\uXXXX).
+        Preserves Unicode, Arabic, and Emojis without byte decoding corruption.
+        """
+        if not text:
+            return True, ""
         try:
-            # Wrap in quotes and load as JSON string
-            unescaped = json.loads(f'"{text}"')
-            return True, unescaped
-        except Exception as e:
-            # Fallback for raw escape sequences
+            # 1. If wrapped in standard quotes, attempt native json decode first
+            candidate = text.strip()
+            if len(candidate) >= 2 and candidate.startswith('"') and candidate.endswith('"'):
+                try:
+                    return True, json.loads(candidate)
+                except Exception:
+                    pass
+
+            # 2. If safe single-line string with no raw quotes
+            if "\n" not in text and "\r" not in text and '"' not in text:
+                try:
+                    return True, json.loads(f'"{text}"')
+                except Exception:
+                    pass
+
+            # 3. Deterministic regex-based replacer that NEVER corrupts Arabic/UTF-8
+            def _repl(match: re.Match[str]) -> str:
+                seq = match.group(1)
+                if seq in _ESCAPE_MAP:
+                    return _ESCAPE_MAP[seq]
+                if seq.startswith(r"\u") or seq.startswith(r"\U"):
+                    try:
+                        return chr(int(seq[2:], 16))
+                    except ValueError:
+                        return seq
+                return seq
+
+            result = _ESCAPE_PATTERN.sub(_repl, text)
+
+            # Combine UTF-16 surrogate pairs if any were produced (e.g. \uD83D\uDE80 -> 🚀)
             try:
-                unescaped = bytes(text, "utf-8").decode("unicode_escape")
-                return True, unescaped
-            except Exception as e2:
-                return False, f"فشل إلغاء الهروب (Unescape): {str(e2)}"
+                result = result.encode("utf-16", "surrogatepass").decode("utf-16")
+            except Exception:
+                pass
+
+            return True, result
+        except Exception as e:
+            return False, f"فشل إلغاء الهروب (Unescape): {str(e)}"
 
 
 class Base64Tools:
     @staticmethod
     def encode(text: str) -> tuple[bool, str]:
         """Encodes UTF-8 string to Base64 safely."""
+        if not text:
+            return True, ""
         try:
             text_bytes = text.encode("utf-8")
             encoded_bytes = base64.b64encode(text_bytes)
@@ -115,11 +169,13 @@ class Base64Tools:
 
     @staticmethod
     def decode(text: str) -> tuple[bool, str]:
-        """Decodes Base64 to UTF-8 string safely with error detection without crash."""
-        if not text or not text.strip():
-            return False, "النص المشفر بـ Base64 فارغ."
+        """Decodes Base64 to UTF-8 string safely with error detection without crashing."""
+        if text is None:
+            return False, "النص المشفر بـ Base64 غير متوفر."
         cleaned = text.strip().replace("\r", "").replace("\n", "").replace(" ", "")
-        
+        if not cleaned:
+            return True, ""
+
         # Add required padding if missing
         missing_padding = len(cleaned) % 4
         if missing_padding:
@@ -141,17 +197,22 @@ class UrlTools:
     @staticmethod
     def encode(text: str) -> str:
         """URL encodes a string component."""
+        if not text:
+            return ""
         return urllib.parse.quote(text, safe="")
 
     @staticmethod
     def decode(text: str) -> str:
         """URL decodes an encoded string."""
+        if not text:
+            return ""
         return urllib.parse.unquote(text)
 
     @staticmethod
     def parse_query_string(url_or_query: str) -> tuple[bool, dict[str, Any], str]:
         """
         Parses full URL or query string into structured parameters dictionary and pretty JSON.
+        Handles repeated query params, Unicode URLs, and fragments properly.
         """
         if not url_or_query or not url_or_query.strip():
             return False, {}, "الرابط أو Query String فارغ."
@@ -169,7 +230,7 @@ class UrlTools:
 
         try:
             parsed = urllib.parse.parse_qs(query, keep_blank_values=True)
-            # Flatten single item lists for cleaner output
+            # Flatten single-item lists for cleaner representation while preserving multi-value lists
             flat: dict[str, Any] = {}
             for k, v in parsed.items():
                 if len(v) == 1:
@@ -220,28 +281,37 @@ class JwtTools:
             return False, {}, f"فشل فك تشفير حمولة JWT (Payload): {str(e)}"
 
         # Analyze timestamps in payload
-        human_exp = None
-        human_iat = None
-        human_nbf = None
-        is_expired = None
+        human_exp: Optional[str] = None
+        human_iat: Optional[str] = None
+        human_nbf: Optional[str] = None
+        is_expired: Optional[bool] = None
 
         now_ts = datetime.datetime.now(datetime.timezone.utc).timestamp()
 
         if "exp" in payload_dict and isinstance(payload_dict["exp"], (int, float)):
-            exp_val = payload_dict["exp"]
-            exp_dt = datetime.datetime.fromtimestamp(exp_val, tz=datetime.timezone.utc)
-            human_exp = exp_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
-            is_expired = now_ts > exp_val
+            try:
+                exp_val = payload_dict["exp"]
+                exp_dt = datetime.datetime.fromtimestamp(exp_val, tz=datetime.timezone.utc)
+                human_exp = exp_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+                is_expired = now_ts > exp_val
+            except Exception:
+                human_exp = "قيمة exp غير صالحة كتاريخ"
 
         if "iat" in payload_dict and isinstance(payload_dict["iat"], (int, float)):
-            iat_val = payload_dict["iat"]
-            iat_dt = datetime.datetime.fromtimestamp(iat_val, tz=datetime.timezone.utc)
-            human_iat = iat_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            try:
+                iat_val = payload_dict["iat"]
+                iat_dt = datetime.datetime.fromtimestamp(iat_val, tz=datetime.timezone.utc)
+                human_iat = iat_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            except Exception:
+                human_iat = "قيمة iat غير صالحة كتاريخ"
 
         if "nbf" in payload_dict and isinstance(payload_dict["nbf"], (int, float)):
-            nbf_val = payload_dict["nbf"]
-            nbf_dt = datetime.datetime.fromtimestamp(nbf_val, tz=datetime.timezone.utc)
-            human_nbf = nbf_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            try:
+                nbf_val = payload_dict["nbf"]
+                nbf_dt = datetime.datetime.fromtimestamp(nbf_val, tz=datetime.timezone.utc)
+                human_nbf = nbf_dt.strftime("%Y-%m-%d %H:%M:%S UTC")
+            except Exception:
+                human_nbf = "قيمة nbf غير صالحة كتاريخ"
 
         details = {
             "header": header_dict,
@@ -254,7 +324,7 @@ class JwtTools:
             "warning": "تنبيه هام: عملية فك التشفير (Decode) لا تعني التحقق من صحة التوقيع (Signature Verification)."
         }
 
-        # Format friendly markdown/text output
+        # Format user-friendly summary
         lines = [
             "⚠️ تنبيه أمني: فك التشفير الحالي هو لقراءة المحتوى فقط ولا يثبت صحة التوقيع الرقمي (Signature).",
             "",
@@ -273,8 +343,8 @@ class JwtTools:
         if human_exp:
             status_tag = " [منتهي الصلاحية ❌ EXPIRED]" if is_expired else " [صالح زمنياً ✓ ACTIVE]"
             lines.append(f"  • تاريخ الانتهاء (exp): {human_exp}{status_tag}")
-        if not human_iat and not human_exp:
-            lines.append("  • لا توجد حقول تواريخ (exp / iat) داخل التوكن.")
+        if not human_iat and not human_exp and not human_nbf:
+            lines.append("  • لا توجد حقول تواريخ (exp / iat / nbf) داخل التوكن.")
 
         return True, details, "\n".join(lines)
 
@@ -287,9 +357,20 @@ class UuidTools:
 
     @staticmethod
     def generate_batch(count: int = 5) -> list[str]:
-        """Generates a batch of UUID v4 strings (clamped between 1 and 100)."""
+        """Generates a batch of UUID v4 strings (safely clamped between 1 and 100)."""
         safe_count = max(1, min(count, 100))
         return [str(uuid.uuid4()) for _ in range(safe_count)]
+
+    @staticmethod
+    def is_valid_uuid(uuid_str: str) -> bool:
+        """Validates if a string is a valid UUID."""
+        if not uuid_str or not isinstance(uuid_str, str):
+            return False
+        try:
+            val = uuid.UUID(uuid_str.strip())
+            return str(val).lower() == uuid_str.strip().lower()
+        except ValueError:
+            return False
 
 
 class TimestampTools:
@@ -297,14 +378,16 @@ class TimestampTools:
     def from_timestamp(ts: Union[int, float]) -> tuple[bool, dict[str, str]]:
         """
         Converts a Unix timestamp (seconds or milliseconds) to all standard formats.
+        Safely handles Epoch boundaries (0, negative/past timestamps).
         """
         try:
-            # Auto-detect milliseconds if timestamp is large (e.g. > 100,000,000,000)
-            if ts > 1e11:
-                seconds = ts / 1000.0
-                millis = int(ts)
+            val = float(ts)
+            # Auto-detect milliseconds if timestamp is very large (e.g. > 100,000,000,000 or < -100,000,000,000)
+            if abs(val) > 1e11:
+                seconds = val / 1000.0
+                millis = int(val)
             else:
-                seconds = float(ts)
+                seconds = val
                 millis = int(seconds * 1000)
 
             utc_dt = datetime.datetime.fromtimestamp(seconds, tz=datetime.timezone.utc)
@@ -317,8 +400,10 @@ class TimestampTools:
                 "utc_datetime": utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "iso_8601": utc_dt.isoformat()
             }
+        except (ValueError, OSError, OverflowError) as e:
+            return False, {"error": f"قيمة Timestamp غير صالحة أو خارج النطاق: {str(e)}"}
         except Exception as e:
-            return False, {"error": f"قيمة Timestamp غير صالحة: {str(e)}"}
+            return False, {"error": f"خطأ في تحويل الـ Timestamp: {str(e)}"}
 
     @staticmethod
     def from_datetime_string(dt_str: str) -> tuple[bool, dict[str, str]]:
@@ -361,25 +446,28 @@ class TimestampTools:
         if dt is None:
             return False, {"error": "صيغة التاريخ غير مدعومة. يرجى استخدام ISO 8601 أو YYYY-MM-DD HH:MM:SS"}
 
-        # If naive, assume local timezone
-        if dt.tzinfo is None:
-            local_dt = dt
-            utc_dt = dt.astimezone(datetime.timezone.utc)
-            seconds = local_dt.timestamp()
-        else:
-            utc_dt = dt.astimezone(datetime.timezone.utc)
-            local_dt = dt.astimezone()
-            seconds = dt.timestamp()
+        try:
+            # If naive, assume local timezone
+            if dt.tzinfo is None:
+                local_dt = dt
+                utc_dt = dt.astimezone(datetime.timezone.utc)
+                seconds = local_dt.timestamp()
+            else:
+                utc_dt = dt.astimezone(datetime.timezone.utc)
+                local_dt = dt.astimezone()
+                seconds = dt.timestamp()
 
-        millis = int(seconds * 1000)
+            millis = int(seconds * 1000)
 
-        return True, {
-            "unix_seconds": str(int(seconds)),
-            "unix_milliseconds": str(millis),
-            "local_datetime": local_dt.strftime("%Y-%m-%d %H:%M:%S"),
-            "utc_datetime": utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC"),
-            "iso_8601": utc_dt.isoformat()
-        }
+            return True, {
+                "unix_seconds": str(int(seconds)),
+                "unix_milliseconds": str(millis),
+                "local_datetime": local_dt.strftime("%Y-%m-%d %H:%M:%S"),
+                "utc_datetime": utc_dt.strftime("%Y-%m-%d %H:%M:%S UTC"),
+                "iso_8601": utc_dt.isoformat()
+            }
+        except Exception as e:
+            return False, {"error": f"خطأ في حساب التوقيت: {str(e)}"}
 
     @staticmethod
     def get_current() -> dict[str, str]:
@@ -401,7 +489,7 @@ class TimestampTools:
 class HashTools:
     @staticmethod
     def compute_hashes(text: str) -> dict[str, str]:
-        """Computes MD5, SHA-1, SHA-256, and SHA-512 hashes."""
+        """Computes MD5, SHA-1, SHA-256, and SHA-512 hashes accurately."""
         encoded = text.encode("utf-8")
         return {
             "md5": hashlib.md5(encoded).hexdigest(),
@@ -415,17 +503,19 @@ class HashTools:
 class TextUtils:
     @staticmethod
     def to_uppercase(text: str) -> str:
-        return text.upper()
+        return text.upper() if text else ""
 
     @staticmethod
     def to_lowercase(text: str) -> str:
-        return text.lower()
+        return text.lower() if text else ""
 
     @staticmethod
     def to_words(text: str) -> list[str]:
         """Splits camelCase, PascalCase, snake_case, kebab-case, or spaces into tokens."""
-        # Replace non-alphanumeric with spaces
-        s = re.sub(r"[-_]+", " ", text)
+        if not text:
+            return []
+        # Replace dashes, underscores, and common punctuation with spaces
+        s = re.sub(r"[-_.,;:/\\|]+", " ", text)
         # Split camelCase and PascalCase
         s = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", s)
         s = re.sub(r"([A-Z]+)([A-Z][a-z0-9])", r"\1 \2", s)
@@ -455,6 +545,8 @@ class TextUtils:
 
     @staticmethod
     def remove_duplicate_lines(text: str) -> str:
+        if not text:
+            return ""
         lines = text.splitlines()
         seen = set()
         unique = []
@@ -466,6 +558,8 @@ class TextUtils:
 
     @staticmethod
     def sort_lines(text: str, reverse: bool = False, case_sensitive: bool = False) -> str:
+        if not text:
+            return ""
         lines = text.splitlines()
         if case_sensitive:
             lines.sort(reverse=reverse)
@@ -476,16 +570,25 @@ class TextUtils:
     @staticmethod
     def trim_whitespace(text: str) -> str:
         """Trims leading/trailing whitespace per line and overall."""
+        if not text:
+            return ""
         lines = [line.strip() for line in text.splitlines()]
         return "\n".join(lines).strip()
 
     @staticmethod
     def count_metrics(text: str) -> dict[str, int]:
         """Counts characters (with and without whitespace), words, and lines."""
+        if not text:
+            return {
+                "characters": 0,
+                "characters_no_spaces": 0,
+                "words": 0,
+                "lines": 0
+            }
         chars_total = len(text)
         chars_no_spaces = len(re.sub(r"\s+", "", text))
-        lines_count = len(text.splitlines()) if text else 0
-        words_count = len(text.split()) if text else 0
+        lines_count = len(text.splitlines())
+        words_count = len(text.split())
         return {
             "characters": chars_total,
             "characters_no_spaces": chars_no_spaces,

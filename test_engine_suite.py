@@ -10,15 +10,22 @@ from snipglide.engine.parser import parse_variables
 initialize_database()
 
 with get_connection() as conn:
-    conn.execute("DELETE FROM snippets WHERE shortcut LIKE '@test_%' OR shortcut = '@autotest'")
+    conn.execute("DELETE FROM snippets WHERE shortcut LIKE '@test_%' OR shortcut = '@autotest' OR shortcut IN ('@mr', '@1', '@dislov', '@el', '@glass', '@p', '@s')")
     conn.commit()
 
 engine = ExpansionEngine(settings_provider=lambda: {'enabled': True, 'case_sensitive': False, 'max_buffer': 250})
+
+# 1. Test standard triggers
+test_cases = ['@mr', '@1', '@dislov', '@el', '@glass', '@p', '@s']
+for trigger in test_cases:
+    try:
+        add_snippet(Snippet(shortcut=trigger, replacement=f'Replacement for {trigger}', enabled=True))
+    except Exception:
+        pass
+engine.reload_snippets()
 snippets = engine._get_cached_snippets()
 print(f'Total active snippets: {len(snippets)}')
 
-# 1. Test standard triggers from user's database
-test_cases = ['@mr', '@1', '@dislov', '@el', '@glass', '@p', '@s']
 for trigger in test_cases:
     engine.buffer = 'testing ' + trigger
     match = engine._find_snippet_match(settings={'case_sensitive': False}, win_title='Any Window - Notepad', win_proc='notepad.exe')

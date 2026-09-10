@@ -1,8 +1,3 @@
-"""
-Developer Toolbox Page - Re-export for Backward Compatibility.
-This module re-exports DevToolboxPageQt from the modular snipglide.ui_qt.dev_tools package.
-"""
-
 from snipglide.ui_qt.dev_tools.toolbox_page import DevToolboxPageQt
 from snipglide.ui_qt.dev_tools.json_widget import JsonToolsWidget
 from snipglide.ui_qt.dev_tools.encoding_widget import Base64Widget, UrlToolsWidget
