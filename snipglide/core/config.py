@@ -49,7 +49,7 @@ DEFAULT_SETTINGS = {
     "hotkey_full_screenshot": "<ctrl>+<print_screen>",
     "hotkey_area_screenshot": "<win>+<print_screen>",
     "recordings_dir": str(RECORDINGS_DIR),
-    "video_record_audio": False,
+    "video_record_audio": False,  # Audio capture is reserved for v1.1 (v1.0 focuses on silent HD MP4 recording)
     "video_show_cursor": True,
     "video_fps": 24,
     "hotkey_video_record": "<ctrl>+<shift>+r",

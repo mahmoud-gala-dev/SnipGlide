@@ -40,6 +40,8 @@ class VideoRecorderWorker(QThread):
         self.fps = max(10, min(60, fps))
         self.show_cursor = show_cursor
         self.record_audio = record_audio
+        if self.record_audio:
+            logger.info("Video audio capture is reserved for v1.1. Capturing HD screen video.")
 
         self._running = True
         self._paused = False

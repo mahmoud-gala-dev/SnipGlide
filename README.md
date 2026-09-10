@@ -31,10 +31,10 @@
 | 📁 **Projects & Command Library (Phase 7)** | Local workspace manager with automatic framework detection (Django, FastAPI, Flask, React, Next.js, Vue, Docker), active project context, and safe templated terminal command library. |
 | 🔍 **Unified Developer Search (Phase 8)** | Global instant search with debouncing and ranking across Snippets, Notes, Chat Notes, Clipboard, Screenshots, Saved Regexes, API Requests, Projects, and Commands with direct navigation. |
 | 📸 **Instant Screen Snipping** | Full screen capture (`Ctrl+Print`) and precision area snipping (`Win+Print`) with instant zoom viewer and clipboard copy. |
-| 🎥 **HD Video Screen Recorder** | Record full screen or custom cropped areas into smooth MP4 videos with mouse pointer glow, live floating widget (`REC`), and built-in video player. |
+| 🎥 **HD Video Screen Recorder** | Record full screen or custom cropped areas into smooth MP4 videos using thread-safe direct OS buffer capture (`mss`) with mouse pointer glow, live floating widget (`REC`), and built-in video player. |
 | 🗂️ **Folders & Drag & Drop** | Organize screenshots and recordings into folders (`العامة`, `العمل`, `مشاريع`, etc.) with glowing visual Drag-and-Drop item transfer. |
-| 📝 **Code Notepad & Editor** | Multi-tab notepad with line numbers, code syntax highlighting, full RTL Arabic writing support, and auto-session recovery. |
-| 🔒 **100% Local & Secure** | All data is stored locally in an optimized SQLite database with master PIN security, secret redaction in logs, and backup export/import. |
+| 📝 **Code Notepad & Editor** | Modular multi-tab notepad with line numbers, code syntax highlighting, search/replace bar, full RTL Arabic writing support, and auto-session recovery. |
+| 🔒 **100% Local & Secure** | All data stored locally in SQLite with hardware/user-bound Windows DPAPI (`CryptProtectData`) encryption, fail-closed security, secret redaction, and full disaster recovery (Backup v2.0) across all 10 tables. |
 
 
 ---
@@ -93,7 +93,7 @@ The resulting executable will be created in `dist\SnipGlide.exe`.
 لمطالعة تفاصيل الأمان، التشفير، وعزل ReDoS:
 👉 **[راجع وثيقة الأمان والخصوصية SECURITY.md](SECURITY.md)**
 
-لمطالعة تفاصيل الاختبارات الشاملة (149 اختباراً) وكيفية تشغيلها:
+لمطالعة تفاصيل الاختبارات الشاملة (163 اختباراً شاملاً بنسبة نجاح 100%) وكيفية تشغيلها:
 👉 **[راجع وثيقة الاختبارات وجودة الكود TESTING.md](TESTING.md)**
 
 ---

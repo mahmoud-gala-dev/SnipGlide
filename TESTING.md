@@ -6,7 +6,7 @@ This document details the test suites, execution procedures, test architecture, 
 
 ## 1. Overview of Test Suites
 
-The test suite covers 149 automated test cases across 13 dedicated test modules:
+The test suite covers 163 automated test cases across 14 dedicated test modules:
 
 | Test Module | Test Count | Description |
 |---|---|---|
@@ -23,7 +23,8 @@ The test suite covers 149 automated test cases across 13 dedicated test modules:
 | `tests/test_projects_and_commands.py` | 4 | Developer Project auto-detection, project management, and Terminal Command Library category filtering. |
 | `tests/test_unified_search.py` | 5 | Multi-source unified search, scoring heuristics, Arabic text queries, and body retrieval. |
 | `tests/test_hardening_security.py` | 23 | Comprehensive security suite: fail-closed secret encryption, safe auto-migration, API credential encryption, history query redaction, ReDoS process isolation, cooperative worker cancellation, and 3-state database migration tests. |
-| **TOTAL** | **149** | **100% Passed (0 Failures, 0 Errors, 0 Skipped)** |
+| `tests/test_release_readiness.py` | 14 | Windows Release Candidate & Production Hardening suite: clean install, legacy DB migration, Backup v2.0 10-table coverage, VideoRecorderWorker mss thread-safety, dev tool cleanup, Windows DPAPI encryption/decryption, legacy Fernet backward compatibility, and modular package parity. |
+| **TOTAL** | **163** | **100% Passed (0 Failures, 0 Errors, 0 Skipped)** |
 
 ---
 
