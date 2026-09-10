@@ -65,6 +65,22 @@ def wrap_in_labeled_box(label_text: str, widget: QWidget) -> QWidget:
     return container
 
 
+def create_section_card(title: str, widget: QWidget) -> QWidget:
+    """Wraps a widget in a styled section card with header title."""
+    card = QWidget()
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(8, 8, 8, 8)
+    layout.setSpacing(6)
+    card.setStyleSheet("background-color: #181825; border: 1px solid #313244; border-radius: 6px;")
+
+    lbl = QLabel(title)
+    lbl.setStyleSheet("font-size: 13px; font-weight: bold; color: #89b4fa; border: none;")
+    layout.addWidget(lbl)
+    layout.addWidget(widget, stretch=1)
+    return card
+
+
+
 def show_status_badge(label: QLabel, text: str, is_error: bool = False) -> None:
     """Updates and displays a status feedback badge."""
     bg = "#450a0a" if is_error else "#052e16"
@@ -88,3 +104,6 @@ def copy_text_to_clipboard(text: str, toast_callback: Optional[Callable[[str, bo
             toast_callback("تم نسخ المحتوى إلى الحافظة! 📋", False)
         return True
     return False
+
+copy_to_clipboard = copy_text_to_clipboard
+

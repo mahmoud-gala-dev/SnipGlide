@@ -24,15 +24,18 @@
 | الميزة | Description |
 |---|---|
 | ⚡ **Smart Text Expansion** | Background global keyboard listener that expands custom snippets (`#sig`, `$date`, etc.) with dynamic variables (`{date}`, `{time}`, `{clipboard}`) and regex support across all Windows apps. |
+| 🛠️ **Developer Toolbox (Phases 1–3)** | Complete developer utilities: JSON formatter/validator, Base64, URL encoder, JWT decoder, UUID generator, Timestamp converter, Hashes (MD5/SHA), Text case utils, Regex Playground with ReDoS protection, and Smart Code Snippets with form placeholders. |
+| 🌐 **REST API Tester (Phase 4)** | Lightweight, thread-isolated HTTP client supporting GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, headers/params editor, Bearer/Basic/API Key auth, response viewer, cURL export, and sanitized history/saved requests. |
+| 🐙 **Git Developer Tools (Phase 5)** | Local repository status inspector, branch tracking, working/staged diff viewer with syntax coloring, commit history, and automated Conventional Commit message generation. |
+| 🤖 **AI Coding Platform (Phase 6)** | Multi-provider architecture (Gemini, OpenAI, Local Ollama, OpenAI-Compatible) with token streaming, 13 coding actions (Explain, Refactor, Bugs, Tests, Docstrings, Types, Regex, SQL, Convert), and strict privacy context preview confirmation. |
+| 📁 **Projects & Command Library (Phase 7)** | Local workspace manager with automatic framework detection (Django, FastAPI, Flask, React, Next.js, Vue, Docker), active project context, and safe templated terminal command library. |
+| 🔍 **Unified Developer Search (Phase 8)** | Global instant search with debouncing and ranking across Snippets, Notes, Chat Notes, Clipboard, Screenshots, Saved Regexes, API Requests, Projects, and Commands with direct navigation. |
 | 📸 **Instant Screen Snipping** | Full screen capture (`Ctrl+Print`) and precision area snipping (`Win+Print`) with instant zoom viewer and clipboard copy. |
 | 🎥 **HD Video Screen Recorder** | Record full screen or custom cropped areas into smooth MP4 videos with mouse pointer glow, live floating widget (`REC`), and built-in video player. |
 | 🗂️ **Folders & Drag & Drop** | Organize screenshots and recordings into folders (`العامة`, `العمل`, `مشاريع`, etc.) with glowing visual Drag-and-Drop item transfer. |
-| 🖼️ **3 Switchable View Modes** | Switch seamlessly between **⊞ Large Cards (3-col)**, **▦ Compact Grid (6-col)**, and **☰ Detailed Table/List view (54px rows)**. |
-| 📄 **Full Pagination System** | Fast and responsive pagination bar with customizable page sizes (12, 24, 48, 96, All) and quick navigation. |
 | 📝 **Code Notepad & Editor** | Multi-tab notepad with line numbers, code syntax highlighting, full RTL Arabic writing support, and auto-session recovery. |
-| 💬 **Notes & Chat Notes** | Quick notes with instant copy, categories, audio voice note player, and floating chat head widget. |
-| 📋 **Clipboard History** | Real-time background clipboard monitoring with sensitive data protection and paginated search. |
-| 🔒 **100% Local & Secure** | All data is stored locally in an optimized SQLite database with master PIN security and auto-backup. |
+| 🔒 **100% Local & Secure** | All data is stored locally in an optimized SQLite database with master PIN security, secret redaction in logs, and backup export/import. |
+
 
 ---
 
