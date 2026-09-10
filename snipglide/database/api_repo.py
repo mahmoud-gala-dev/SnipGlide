@@ -8,6 +8,7 @@ from snipglide.services.security import (
     decrypt_secret,
     sanitize_url_query,
     is_sensitive_header,
+    is_encrypted_secret,
     ENC_PREFIX,
 )
 from snipglide.utils.logger import logger
@@ -23,7 +24,7 @@ class ApiRepository:
         res = dict(auth_data)
         for k in ("token", "password", "value", "secret"):
             if k in res and isinstance(res[k], str) and res[k]:
-                if not res[k].startswith(ENC_PREFIX):
+                if not is_encrypted_secret(res[k]):
                     res[k] = encrypt_secret(res[k])
         return res
 
@@ -34,7 +35,7 @@ class ApiRepository:
         res = dict(auth_data)
         for k in ("token", "password", "value", "secret"):
             if k in res and isinstance(res[k], str) and res[k]:
-                if res[k].startswith(ENC_PREFIX):
+                if is_encrypted_secret(res[k]):
                     res[k] = decrypt_secret(res[k])
         return res
 
@@ -48,7 +49,7 @@ class ApiRepository:
                 item = dict(h)
                 key = str(item.get("key", "")).strip()
                 val = str(item.get("value", ""))
-                if is_sensitive_header(key) and val and not val.startswith(ENC_PREFIX):
+                if is_sensitive_header(key) and val and not is_encrypted_secret(val):
                     item["value"] = encrypt_secret(val)
                 res.append(item)
             else:
@@ -64,7 +65,7 @@ class ApiRepository:
             if isinstance(h, dict):
                 item = dict(h)
                 val = str(item.get("value", ""))
-                if val and val.startswith(ENC_PREFIX):
+                if val and is_encrypted_secret(val):
                     item["value"] = decrypt_secret(val)
                 res.append(item)
             else:

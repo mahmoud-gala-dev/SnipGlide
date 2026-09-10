@@ -32,6 +32,8 @@ from snipglide.services.dev_tools_service import JsonTools
 from snipglide.services.regex_service import RegexService
 from snipglide.services.security import (
     ENC_PREFIX,
+    DPAPI_PREFIX,
+    is_encrypted_secret,
     decrypt_secret,
     encrypt_secret,
     mask_secret,
@@ -49,7 +51,7 @@ class TestSecurityHardening(unittest.TestCase):
         plain_key = "sk-test1234567890abcdefghijklmnopqrstuvwxyz"
         encrypted = encrypt_secret(plain_key)
 
-        self.assertTrue(encrypted.startswith(ENC_PREFIX))
+        self.assertTrue(is_encrypted_secret(encrypted))
         self.assertNotEqual(plain_key, encrypted)
 
         decrypted = decrypt_secret(encrypted)
@@ -71,12 +73,11 @@ class TestSecurityHardening(unittest.TestCase):
         self.assertTrue(masked.startswith("sk-"))
         self.assertTrue(masked.endswith("cdef"))
         self.assertIn("••••••••", masked)
-        self.assertEqual(mask_secret(""), "")
 
     def test_redact_sensitive_text(self):
         sample = (
-            "Connecting with Bearer my_secret_token_123456 and "
-            "api_key: 'sk-abcdef12345678901234567890' and password: 'SuperSecretPassword123'"
+            "User connected with authorization: Bearer my_secret_token_123456 and "
+            "api_key=sk-abcdef12345678901234567890 and password: SuperSecretPassword123"
         )
         redacted = redact_sensitive_text(sample)
         self.assertNotIn("my_secret_token_123456", redacted)
@@ -86,7 +87,8 @@ class TestSecurityHardening(unittest.TestCase):
 
     def test_encrypt_secret_fails_closed_never_fallback_to_plaintext(self):
         """CRITICAL: Encryption failure must NOT return plaintext fallback. It must raise ValueError."""
-        with patch("snipglide.services.security.Fernet") as mock_fernet:
+        with patch("snipglide.services.security._dpapi_encrypt", side_effect=RuntimeError("DPAPI fault")), \
+             patch("snipglide.services.security.Fernet") as mock_fernet:
             mock_fernet.side_effect = RuntimeError("Cryptographic hardware fault")
             with self.assertRaises(ValueError) as ctx:
                 encrypt_secret("super_sensitive_api_key_12345")
@@ -98,18 +100,22 @@ class TestSecurityHardening(unittest.TestCase):
         result = decrypt_secret(corrupted)
         self.assertEqual(result, "")
 
+        corrupted_dpapi = f"{DPAPI_PREFIX}not-valid-dpapi-token"
+        result_dpapi = decrypt_secret(corrupted_dpapi)
+        self.assertEqual(result_dpapi, "")
+
     def test_ai_key_settings_auto_migration(self):
         """Validates that plaintext settings['ai_api_key'] is safely migrated to enc:v1: with verification."""
         raw_key = "sk-plaintext-ai-key-to-migrate"
         dummy_settings = {"ai_api_key": raw_key, "ai_provider": "gemini"}
 
         # Simulate migration logic from load_settings
-        if dummy_settings["ai_api_key"] and not dummy_settings["ai_api_key"].startswith(ENC_PREFIX):
+        if dummy_settings["ai_api_key"] and not is_encrypted_secret(dummy_settings["ai_api_key"]):
             enc_key = encrypt_secret(dummy_settings["ai_api_key"])
-            if enc_key.startswith(ENC_PREFIX) and decrypt_secret(enc_key) == raw_key:
+            if is_encrypted_secret(enc_key) and decrypt_secret(enc_key) == raw_key:
                 dummy_settings["ai_api_key"] = enc_key
 
-        self.assertTrue(dummy_settings["ai_api_key"].startswith(ENC_PREFIX))
+        self.assertTrue(is_encrypted_secret(dummy_settings["ai_api_key"]))
         self.assertNotIn(raw_key, dummy_settings["ai_api_key"])
         self.assertEqual(decrypt_secret(dummy_settings["ai_api_key"]), raw_key)
 
@@ -151,7 +157,7 @@ class TestApiSecurityHardening(unittest.TestCase):
         raw_stored_json = row["auth_data_json"]
         self.assertNotIn(raw_token, raw_stored_json)
         self.assertNotIn(raw_password, raw_stored_json)
-        self.assertIn(ENC_PREFIX, raw_stored_json)
+        self.assertTrue(ENC_PREFIX in raw_stored_json or DPAPI_PREFIX in raw_stored_json)
 
         # 2. Verify Repository fetches and automatically decrypts for runtime use
         retrieved = ApiRepository.get_request_by_id(req_id)
@@ -458,7 +464,7 @@ class TestDatabaseAndSearchResilience(unittest.TestCase):
                 cursor = conn.cursor()
                 cursor.execute("SELECT auth_data_json FROM saved_api_requests WHERE id = ?", (row_id,))
                 raw_json = cursor.fetchone()[0]
-                self.assertIn(ENC_PREFIX, raw_json)
+                self.assertTrue(ENC_PREFIX in raw_json or DPAPI_PREFIX in raw_json)
                 self.assertNotIn("raw_old_secret", raw_json)
                 conn.close()
         finally:

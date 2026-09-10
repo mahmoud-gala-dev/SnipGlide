@@ -63,8 +63,83 @@ def decrypt_text(encrypted: str, password: str) -> str:
             logger.error(f"Decryption failed: {e}")
             raise ValueError("Decryption failed")
 
+import ctypes
+from ctypes import wintypes
+
+_DPAPI_AVAILABLE = False
+if os.name == "nt":
+    try:
+        class _DATA_BLOB(ctypes.Structure):
+            _fields_ = [
+                ("cbData", wintypes.DWORD),
+                ("pbData", ctypes.POINTER(ctypes.c_char))
+            ]
+        _crypt32 = ctypes.windll.crypt32
+        _kernel32 = ctypes.windll.kernel32
+        _DPAPI_AVAILABLE = True
+    except Exception as _e:
+        _DPAPI_AVAILABLE = False
+        logger.warning(f"Windows DPAPI ctypes initialization failed: {_e}")
+
+DPAPI_PREFIX = "dpapi:v1:"
 ENC_PREFIX = "enc:v1:"
+KNOWN_ENCRYPTED_PREFIXES = (DPAPI_PREFIX, ENC_PREFIX)
+ACTIVE_ENC_PREFIX = DPAPI_PREFIX if _DPAPI_AVAILABLE else ENC_PREFIX
+_DPAPI_ENTROPY = b"snipglide_dpapi_entropy_v1"
 _MACHINE_SALT = b"snipglide_local_sec_salt_v1"
+
+def is_encrypted_secret(text: str) -> bool:
+    """Check if a string has a recognized encryption prefix (dpapi:v1: or enc:v1:)."""
+    if not text or not isinstance(text, str):
+        return False
+    return text.startswith(KNOWN_ENCRYPTED_PREFIXES)
+
+def _dpapi_encrypt(data: bytes, entropy: bytes = _DPAPI_ENTROPY) -> bytes:
+    if not _DPAPI_AVAILABLE:
+        raise OSError("Windows DPAPI is not available on this platform")
+    in_blob = _DATA_BLOB(len(data), ctypes.cast(ctypes.c_char_p(data), ctypes.POINTER(ctypes.c_char)))
+    ent_blob = _DATA_BLOB(len(entropy), ctypes.cast(ctypes.c_char_p(entropy), ctypes.POINTER(ctypes.c_char))) if entropy else None
+    out_blob = _DATA_BLOB()
+    # 0x01 = CRYPTPROTECT_UI_FORBIDDEN
+    res = _crypt32.CryptProtectData(
+        ctypes.byref(in_blob),
+        "snipglide_secret",
+        ctypes.byref(ent_blob) if ent_blob else None,
+        None,
+        None,
+        0x01,
+        ctypes.byref(out_blob)
+    )
+    if not res:
+        err = _kernel32.GetLastError()
+        raise OSError(f"CryptProtectData failed with error {err}")
+    try:
+        return ctypes.string_at(out_blob.pbData, out_blob.cbData)
+    finally:
+        _kernel32.LocalFree(out_blob.pbData)
+
+def _dpapi_decrypt(cipher: bytes, entropy: bytes = _DPAPI_ENTROPY) -> bytes:
+    if not _DPAPI_AVAILABLE:
+        raise OSError("Windows DPAPI is not available on this platform")
+    in_blob = _DATA_BLOB(len(cipher), ctypes.cast(ctypes.c_char_p(cipher), ctypes.POINTER(ctypes.c_char)))
+    ent_blob = _DATA_BLOB(len(entropy), ctypes.cast(ctypes.c_char_p(entropy), ctypes.POINTER(ctypes.c_char))) if entropy else None
+    out_blob = _DATA_BLOB()
+    res = _crypt32.CryptUnprotectData(
+        ctypes.byref(in_blob),
+        None,
+        ctypes.byref(ent_blob) if ent_blob else None,
+        None,
+        None,
+        0x01,
+        ctypes.byref(out_blob)
+    )
+    if not res:
+        err = _kernel32.GetLastError()
+        raise OSError(f"CryptUnprotectData failed with error {err}")
+    try:
+        return ctypes.string_at(out_blob.pbData, out_blob.cbData)
+    finally:
+        _kernel32.LocalFree(out_blob.pbData)
 
 def _get_machine_identifier() -> str:
     parts = [
@@ -84,14 +159,26 @@ def get_secret_encryption_key() -> bytes:
 
 def encrypt_secret(plaintext: str) -> str:
     """
-    Encrypts a sensitive string (API key, token, password) with a machine-bound Fernet key.
-    Returns string prefixed with 'enc:v1:' or empty string if input was empty.
+    Encrypts a sensitive string (API key, token, password).
+    On Windows, uses native hardware/OS-bound DPAPI ('dpapi:v1:').
+    On non-Windows, uses machine-bound PBKDF2 Fernet ('enc:v1:').
+    Returns encrypted string with prefix or empty string if input was empty.
     Fails closed: raises ValueError on any encryption error, never falling back to plaintext.
     """
     if not plaintext:
         return ""
-    if plaintext.startswith(ENC_PREFIX):
+    if is_encrypted_secret(plaintext):
         return plaintext
+
+    if _DPAPI_AVAILABLE:
+        try:
+            cipher_bytes = _dpapi_encrypt(plaintext.encode("utf-8"))
+            b64_cipher = base64.urlsafe_b64encode(cipher_bytes).decode("ascii")
+            return f"{DPAPI_PREFIX}{b64_cipher}"
+        except Exception as e:
+            logger.error(f"Failed to encrypt secret with DPAPI: {type(e).__name__}")
+            raise ValueError(f"Secret encryption failed: {e}")
+
     try:
         key = get_secret_encryption_key()
         f = Fernet(key)
@@ -103,23 +190,35 @@ def encrypt_secret(plaintext: str) -> str:
 
 def decrypt_secret(ciphertext: str) -> str:
     """
-    Decrypts an 'enc:v1:' prefixed string using the local machine key.
+    Decrypts an encrypted string ('dpapi:v1:' or legacy 'enc:v1:').
     If not encrypted (legacy plaintext), returns the input as-is for backward compatibility.
     Never leaks the secret or ciphertext to logs on failure.
     """
     if not ciphertext:
         return ""
-    if not ciphertext.startswith(ENC_PREFIX):
-        return ciphertext
-    try:
-        raw_cipher = ciphertext[len(ENC_PREFIX):]
-        key = get_secret_encryption_key()
-        f = Fernet(key)
-        plain_bytes = f.decrypt(raw_cipher.encode("ascii"))
-        return plain_bytes.decode("utf-8")
-    except Exception as e:
-        logger.error(f"Failed to decrypt secret: {type(e).__name__}")
-        return ""
+
+    if ciphertext.startswith(DPAPI_PREFIX):
+        try:
+            raw_b64 = ciphertext[len(DPAPI_PREFIX):]
+            cipher_bytes = base64.urlsafe_b64decode(raw_b64.encode("ascii"))
+            plain_bytes = _dpapi_decrypt(cipher_bytes)
+            return plain_bytes.decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to decrypt DPAPI secret: {type(e).__name__}")
+            return ""
+
+    if ciphertext.startswith(ENC_PREFIX):
+        try:
+            raw_cipher = ciphertext[len(ENC_PREFIX):]
+            key = get_secret_encryption_key()
+            f = Fernet(key)
+            plain_bytes = f.decrypt(raw_cipher.encode("ascii"))
+            return plain_bytes.decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to decrypt Fernet secret: {type(e).__name__}")
+            return ""
+
+    return ciphertext
 
 def mask_secret(secret: str) -> str:
     """

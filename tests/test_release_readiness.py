@@ -25,8 +25,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import snipglide.core.config as config
 import snipglide.database.connection as db_conn
 from snipglide.database.connection import initialize_database, get_connection
-from snipglide.services.security import encrypt_secret, decrypt_secret, ENC_PREFIX
 from snipglide.core.config import load_settings, save_settings
+from snipglide.services.security import (
+    encrypt_secret,
+    decrypt_secret,
+    is_encrypted_secret,
+    ENC_PREFIX,
+    DPAPI_PREFIX,
+)
 from snipglide.database.api_repo import ApiRepository
 from snipglide.models.api_request import ApiRequest
 
@@ -233,7 +239,7 @@ class TestLegacyUpgradeMigration(unittest.TestCase):
 
         # Stored setting must now be encrypted
         enc_val = loaded.get("ai_api_key", "")
-        self.assertTrue(enc_val.startswith(ENC_PREFIX))
+        self.assertTrue(is_encrypted_secret(enc_val))
         self.assertNotIn("legacy_sk_gemini_plaintext_key_9988", enc_val)
 
         # decrypt_secret must return original value
@@ -243,7 +249,7 @@ class TestLegacyUpgradeMigration(unittest.TestCase):
         # Verify on-disk file
         with open(config.SETTINGS_FILE, "r", encoding="utf-8") as f:
             disk_data = json.load(f)
-        self.assertTrue(disk_data.get("ai_api_key", "").startswith(ENC_PREFIX))
+        self.assertTrue(is_encrypted_secret(disk_data.get("ai_api_key", "")))
         self.assertNotIn("legacy_sk_gemini_plaintext_key_9988", json.dumps(disk_data))
 
 
@@ -459,6 +465,82 @@ class TestSprint1Hardening(unittest.TestCase):
         gw.deleteLater()
 
         app.processEvents()
+
+
+class TestSprint2Hardening(unittest.TestCase):
+    """Verifies Sprint 2 features: Windows DPAPI protection and modular structure."""
+
+    def test_windows_dpapi_roundtrip_encryption(self):
+        """P2-03: Windows DPAPI encrypts and decrypts secrets with hardware/user credentials."""
+        secret = "sk-ant-api-prod-super-secret-dpapi-998877"
+        encrypted = encrypt_secret(secret)
+
+        self.assertTrue(is_encrypted_secret(encrypted))
+        if os.name == "nt":
+            self.assertTrue(encrypted.startswith(DPAPI_PREFIX))
+        self.assertNotEqual(secret, encrypted)
+
+        decrypted = decrypt_secret(encrypted)
+        self.assertEqual(decrypted, secret)
+
+    def test_legacy_fernet_backward_compatibility_under_dpapi(self):
+        """P2-03: Existing enc:v1: secrets decrypt properly without data loss."""
+        from cryptography.fernet import Fernet
+        from snipglide.services.security import get_secret_encryption_key
+        key = get_secret_encryption_key()
+        f = Fernet(key)
+        raw_secret = "legacy_token_created_before_dpapi_upgrade"
+        cipher = f.encrypt(raw_secret.encode("utf-8")).decode("ascii")
+        legacy_ciphertext = f"{ENC_PREFIX}{cipher}"
+
+        self.assertTrue(is_encrypted_secret(legacy_ciphertext))
+        decrypted = decrypt_secret(legacy_ciphertext)
+        self.assertEqual(decrypted, raw_secret)
+
+    def test_dpapi_fail_closed_on_corrupted_data(self):
+        """P2-03: Corrupted or tampered DPAPI ciphertext safely returns empty string."""
+        bad_dpapi = f"{DPAPI_PREFIX}totally_corrupted_base64_string_xyz=="
+        self.assertEqual(decrypt_secret(bad_dpapi), "")
+
+    def test_notepad_and_screenshot_modular_imports(self):
+        """P2-01: Verifies backward-compatible re-exports match the new modular classes."""
+        from snipglide.ui_qt.notepad_page import (
+            NotepadEditor as E1,
+            LineNumberArea as L1,
+            FindReplaceBar as F1,
+            SmoothTabBar as S1,
+            NotepadTab as T1,
+        )
+        from snipglide.ui_qt.notepad.editor import NotepadEditor as E2, LineNumberArea as L2
+        from snipglide.ui_qt.notepad.find_replace_bar import FindReplaceBar as F2
+        from snipglide.ui_qt.notepad.tab import SmoothTabBar as S2, NotepadTab as T2
+
+        self.assertIs(E1, E2)
+        self.assertIs(L1, L2)
+        self.assertIs(F1, F2)
+        self.assertIs(S1, S2)
+        self.assertIs(T1, T2)
+
+        from snipglide.ui_qt.screenshots_page import (
+            ScreenshotViewerDialog as V1,
+            FolderDropButton as B1,
+            ScreenshotCardWidget as C1,
+            ScreenshotCompactCardWidget as CC1,
+            ScreenshotListRowWidget as R1,
+        )
+        from snipglide.ui_qt.screenshots.viewer_dialog import ScreenshotViewerDialog as V2
+        from snipglide.ui_qt.screenshots.cards import (
+            FolderDropButton as B2,
+            ScreenshotCardWidget as C2,
+            ScreenshotCompactCardWidget as CC2,
+            ScreenshotListRowWidget as R2,
+        )
+
+        self.assertIs(V1, V2)
+        self.assertIs(B1, B2)
+        self.assertIs(C1, C2)
+        self.assertIs(CC1, CC2)
+        self.assertIs(R1, R2)
 
 
 if __name__ == "__main__":

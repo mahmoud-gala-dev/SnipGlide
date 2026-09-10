@@ -29,6 +29,7 @@ from snipglide.services.security import (
     sanitize_url_query,
     is_sensitive_header,
     ENC_PREFIX,
+    DPAPI_PREFIX,
 )
 
 
@@ -291,9 +292,9 @@ class TestApiTesterComprehensive(unittest.TestCase):
         self.assertNotIn("super_secret_bearer_token_xyz", raw_auth_json)
         self.assertNotIn("header_token_xyz", raw_headers_json)
 
-        # MUST contain enc:v1: prefix
-        self.assertIn(ENC_PREFIX, raw_auth_json)
-        self.assertIn(ENC_PREFIX, raw_headers_json)
+        # MUST contain enc:v1: or dpapi:v1: prefix
+        self.assertTrue(ENC_PREFIX in raw_auth_json or DPAPI_PREFIX in raw_auth_json)
+        self.assertTrue(ENC_PREFIX in raw_headers_json or DPAPI_PREFIX in raw_headers_json)
 
         # Decrypted retrieval through repository must return original secrets
         loaded = ApiRepository.get_request_by_id(req_id)
@@ -319,7 +320,7 @@ class TestApiTesterComprehensive(unittest.TestCase):
         conn.close()
 
         self.assertNotIn("TopSecretPassword123!", raw_auth)
-        self.assertIn(ENC_PREFIX, raw_auth)
+        self.assertTrue(ENC_PREFIX in raw_auth or DPAPI_PREFIX in raw_auth)
 
         loaded = ApiRepository.get_request_by_id(req_id)
         self.assertEqual(loaded.auth_data.get("password"), "TopSecretPassword123!")
@@ -446,7 +447,7 @@ class TestApiTesterComprehensive(unittest.TestCase):
         conn.close()
 
         self.assertNotIn("raw_unencrypted_legacy_token", updated_auth)
-        self.assertIn(ENC_PREFIX, updated_auth)
+        self.assertTrue(ENC_PREFIX in updated_auth or DPAPI_PREFIX in updated_auth)
 
         # Re-read
         migrated = ApiRepository.get_request_by_id(legacy_id)
