@@ -5,7 +5,10 @@ from typing import Optional, Callable
 from pynput import keyboard
 from snipglide.database.snippet_repo import get_enabled_snippets, increment_usage
 from snipglide.database.autocorrect_repo import get_all_corrections
-from snipglide.engine.parser import parse_variables, get_form_fields, replace_form_fields
+from snipglide.engine.parser import (
+    parse_variables, extract_form_fields, replace_form_variables,
+    get_form_fields, replace_form_fields
+)
 from snipglide.engine.window_tracker import get_active_window_info
 from snipglide.utils.helpers import get_clipboard_text, set_clipboard_text
 from snipglide.utils.logger import logger
@@ -402,7 +405,7 @@ class ExpansionEngine:
         with self._lock:
             self.suspended = True
             try:
-                fields = get_form_fields(snippet.replacement)
+                fields = extract_form_fields(snippet.replacement)
                 replacement = snippet.replacement
                 
                 if fields and self.form_prompt_callback:
@@ -410,7 +413,7 @@ class ExpansionEngine:
                     if answers is None:
                         self.buffer = ""
                         return
-                    replacement = replace_form_fields(replacement, answers)
+                    replacement = replace_form_variables(replacement, answers)
 
                 replacement = parse_variables(replacement, snippet.usage_counter)
 

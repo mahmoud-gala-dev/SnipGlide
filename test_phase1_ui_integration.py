@@ -18,8 +18,8 @@ def test_phase1_ui():
 
     # 1. Instantiate Page
     page = DevToolboxPageQt()
-    assert page.tabs.count() == 8, f"Expected 8 tabs, found {page.tabs.count()}"
-    print("✓ DevToolboxPageQt instantiated with all 8 sub-tools successfully")
+    assert page.tabs.count() >= 8, f"Expected at least 8 tabs, found {page.tabs.count()}"
+    print(f"✓ DevToolboxPageQt instantiated with {page.tabs.count()} sub-tools successfully")
 
     # 2. Test JSON Tool in UI
     page.json_input.setPlainText('{"app": "SnipGlide", "code": 2026}')

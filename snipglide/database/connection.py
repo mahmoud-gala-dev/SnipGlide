@@ -13,7 +13,8 @@ def get_connection() -> sqlite3.Connection:
 
 
 def initialize_database():
-    with get_connection() as conn:
+    conn = get_connection()
+    try:
         cursor = conn.cursor()
         cursor.execute("PRAGMA journal_mode = WAL")
         cursor.execute("PRAGMA synchronous = NORMAL")
@@ -264,5 +265,41 @@ def initialize_database():
             ]
             cursor.executemany("INSERT INTO screenshot_folders (name, color) VALUES (?, ?)", default_flds)
 
+        # Migration: ensure content_type column exists in clipboard_history
+        cursor.execute("PRAGMA table_info(clipboard_history)")
+        clip_cols = [col[1] for col in cursor.fetchall()]
+        if "content_type" not in clip_cols:
+            cursor.execute("ALTER TABLE clipboard_history ADD COLUMN content_type TEXT DEFAULT 'PLAIN_TEXT'")
+
+        # Create saved_regexes table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_regexes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                pattern TEXT NOT NULL,
+                description TEXT DEFAULT '',
+                flags TEXT DEFAULT '',
+                replacement TEXT DEFAULT '',
+                favorite INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_regexes_fav ON saved_regexes(favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_regexes_name ON saved_regexes(name)")
+
+        # Migration: ensure snippet_type column exists in snippets
+        cursor.execute("PRAGMA table_info(snippets)")
+        snippet_cols = [col[1] for col in cursor.fetchall()]
+        if "snippet_type" not in snippet_cols:
+            cursor.execute("ALTER TABLE snippets ADD COLUMN snippet_type TEXT DEFAULT 'Text'")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_type ON snippets (snippet_type)")
+
         conn.commit()
+    finally:
+        conn.close()
+
+
+init_db = initialize_database
+
 

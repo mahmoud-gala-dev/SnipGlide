@@ -1,4 +1,5 @@
 import sys
+from typing import Optional, Any
 from PySide6.QtWidgets import QApplication
 from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QFont
@@ -18,6 +19,7 @@ class HotkeySignalBridge(QObject):
     capture_full_signal = Signal()
     capture_area_signal = Signal()
     record_video_signal = Signal()
+    form_prompt_signal = Signal(str, list, object)
 
 class AppCoordinatorQt:
     def __init__(self, app: QApplication):
@@ -29,9 +31,10 @@ class AppCoordinatorQt:
         ensure_sound_asset()
         ensure_camera_shutter_sound()
 
-        # Thread-safe Qt signal bridge for global hotkeys
+        # Thread-safe Qt signal bridge for global hotkeys & dialogs
         self.hotkey_bridge = HotkeySignalBridge()
         self.hotkey_bridge.quick_open_signal.connect(self.handle_quick_open)
+        self.hotkey_bridge.form_prompt_signal.connect(self.handle_form_prompt)
 
         # Initialize background screenshot and recording services
         self.screenshot_service = ScreenshotService(
@@ -52,9 +55,10 @@ class AppCoordinatorQt:
         self.font_family = download_and_load_arabic_font("Tajawal")
         self.app.setFont(QFont(self.font_family, 12))
 
-        # Initialize background engine with global hotkey support
+        # Initialize background engine with global hotkey support & form prompt
         self.engine = ExpansionEngine(
             settings_provider=self.get_current_settings,
+            form_prompt_callback=self.prompt_snippet_form,
             quick_open_callback=self.hotkey_bridge.quick_open_signal.emit,
             capture_full_callback=self.hotkey_bridge.capture_full_signal.emit,
             capture_area_callback=self.hotkey_bridge.capture_area_signal.emit,
@@ -95,6 +99,36 @@ class AppCoordinatorQt:
                 from PySide6.QtWidgets import QSystemTrayIcon
                 icon_type = QSystemTrayIcon.Warning if is_error else QSystemTrayIcon.Information
                 self.window.tray_icon.showMessage("SnipGlide - لقطة / تسجيل", msg, icon_type, 2500)
+
+    def prompt_snippet_form(self, snippet, fields: list[dict[str, Any]]) -> Optional[dict[str, str]]:
+        """
+        Thread-safe callback invoked from ExpansionEngine's background listener thread.
+        Bridges to Qt GUI thread, displays SnippetFormDialog, and waits for submission or cancel.
+        """
+        import threading
+        result_holder = {"answers": None, "event": threading.Event()}
+        shortcut = getattr(snippet, "shortcut", "Snippet")
+        self.hotkey_bridge.form_prompt_signal.emit(shortcut, fields, result_holder)
+        # Wait for user interaction with 60s safety timeout
+        finished = result_holder["event"].wait(timeout=60.0)
+        if finished:
+            return result_holder["answers"]
+        return None
+
+    def handle_form_prompt(self, shortcut: str, fields: list[dict[str, Any]], result_holder: dict):
+        """Runs on Qt Main GUI thread: instantiates and displays SnippetFormDialog."""
+        from snipglide.ui_qt.dialogs.snippet_form_dialog import SnippetFormDialog
+        try:
+            dlg = SnippetFormDialog(shortcut, fields, parent=self.window)
+            if dlg.exec():
+                result_holder["answers"] = dlg.get_answers()
+            else:
+                result_holder["answers"] = None
+        except Exception as e:
+            logger.error(f"Error displaying SnippetFormDialog: {e}")
+            result_holder["answers"] = None
+        finally:
+            result_holder["event"].set()
 
     def get_current_settings(self) -> dict:
         if self.window and hasattr(self.window, "settings"):

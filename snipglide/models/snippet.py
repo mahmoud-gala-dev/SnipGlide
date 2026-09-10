@@ -11,6 +11,7 @@ class Snippet:
     tags: List[str] = field(default_factory=list)
     description: str = ""
     language: str = "Plain Text"
+    snippet_type: str = "Text"  # "Text" or "Code"
     enabled: bool = True
     favorite: bool = False
     usage_counter: int = 0

@@ -102,6 +102,21 @@ class SearchPageQt(QWidget):
 
     def _copy_result(self, item):
         kind, ref = item.data(Qt.UserRole)
+        if kind == "Regex":
+            win = self.window()
+            if hasattr(win, "sidebar") and hasattr(win, "dev_toolbox_page"):
+                from snipglide.database.regex_repo import RegexRepository
+                try:
+                    regex_obj = RegexRepository.get_by_id(int(ref))
+                    if regex_obj:
+                        win.sidebar.select_page("DevToolbox")
+                        win.dev_toolbox_page.tabs.setCurrentIndex(8)
+                        win.dev_toolbox_page.regex_widget.load_regex(regex_obj)
+                        self.toast_signal.emit(f"تم فتح التعبير النمطي: {regex_obj.name} 🔍", False)
+                        return
+                except Exception:
+                    pass
+
         body = get_search_result_body(kind, ref)
         if body:
             clipboard = QApplication.clipboard()

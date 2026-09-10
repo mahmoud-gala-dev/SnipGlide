@@ -3,7 +3,7 @@ from PySide6.QtGui import QCursor, QFont, QTextOption
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QLineEdit,
     QPlainTextEdit, QFrame, QComboBox, QCheckBox, QMessageBox,
-    QListWidget, QListWidgetItem, QSplitter, QMenu, QApplication
+    QListWidget, QListWidgetItem, QSplitter, QMenu, QApplication, QInputDialog
 )
 
 from snipglide.database.snippet_repo import (
@@ -480,36 +480,162 @@ class SnippetEditorViewQt(QWidget):
 
         r_layout.addLayout(r2_box)
 
-        # Variable Insert Toolbar
+        # Field Row 3: Snippet Type & Language
+        r3_box = QHBoxLayout()
+        r3_box.setSpacing(12)
+
+        # Snippet Type Box
+        type_col = QVBoxLayout()
+        type_col.setSpacing(4)
+        lbl_type = QLabel("نوع الاختصار (Snippet Type):")
+        lbl_type.setStyleSheet(f"font-size: 13px; font-weight: bold; color: #94a3b8; font-family: '{self.font_family}', 'Tajawal', sans-serif;")
+        self.type_combo = QComboBox()
+        self.type_combo.setFixedHeight(42)
+        self.type_combo.setFont(QFont(self.font_family, 13))
+        self.type_combo.addItem("📄 نص عادي (Text Snippet)", "Text")
+        self.type_combo.addItem("💻 كود برمجي (Code Snippet)", "Code")
+        self.type_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: #202c33;
+                border: 1.5px solid #3b4a54;
+                border-radius: 9px;
+                padding: 4px 12px;
+                color: #f0f2f5;
+                font-size: 13px;
+                font-family: '{self.font_family}', 'Tajawal', sans-serif;
+            }}
+            QComboBox:hover {{
+                border-color: #60a5fa;
+            }}
+        """)
+        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
+        type_col.addWidget(lbl_type)
+        type_col.addWidget(self.type_combo)
+        r3_box.addLayout(type_col, stretch=1)
+
+        # Language Box
+        lang_col = QVBoxLayout()
+        lang_col.setSpacing(4)
+        lbl_lang = QLabel("لغة البرمجة (Language):")
+        lbl_lang.setStyleSheet(f"font-size: 13px; font-weight: bold; color: #94a3b8; font-family: '{self.font_family}', 'Tajawal', sans-serif;")
+        self.lang_combo = QComboBox()
+        self.lang_combo.setFixedHeight(42)
+        self.lang_combo.setFont(QFont(self.font_family, 13))
+        self.lang_combo.addItems([
+            "Plain Text", "Python", "JavaScript", "TypeScript", "HTML",
+            "CSS", "JSON", "SQL", "PowerShell", "Bash"
+        ])
+        self.lang_combo.setEnabled(False)
+        self.lang_combo.setStyleSheet(f"""
+            QComboBox {{
+                background-color: #202c33;
+                border: 1.5px solid #3b4a54;
+                border-radius: 9px;
+                padding: 4px 12px;
+                color: #38bdf8;
+                font-size: 13px;
+                font-family: '{self.font_family}', 'Tajawal', sans-serif;
+            }}
+            QComboBox:disabled {{
+                color: #64748b;
+                background-color: #182229;
+                border-color: #243139;
+            }}
+            QComboBox:hover:!disabled {{
+                border-color: #38bdf8;
+            }}
+        """)
+        lang_col.addWidget(lbl_lang)
+        lang_col.addWidget(self.lang_combo)
+        r3_box.addLayout(lang_col, stretch=1)
+
+        r_layout.addLayout(r3_box)
+
+        # Variable Insert Toolbar Header Row
         var_header_row = QHBoxLayout()
         lbl_content = QLabel("نص التوسيع الكامل (Expanded Content):")
         lbl_content.setStyleSheet(f"font-weight: bold; font-size: 13px; color: #94a3b8; font-family: '{self.font_family}', 'Tajawal', sans-serif;")
         var_header_row.addWidget(lbl_content)
         var_header_row.addStretch()
 
-        # Variable Quick Pills
+        # Form Variables quick insertion buttons
+        btn_form_input = QPushButton("+ 📝 {{input:name}}")
+        btn_form_input.setFixedHeight(28)
+        btn_form_input.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_form_input.setToolTip("إدراج متغير إدخال يطلب من المستخدم قيمة عند التوسيع")
+        btn_form_input.setFont(QFont(self.font_family, 11, QFont.Bold))
+        btn_form_input.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #064e3b;
+                border: 1px solid #059669;
+                color: #6ee7b7;
+                font-weight: bold;
+                font-size: 11px;
+                border-radius: 7px;
+                padding: 2px 10px;
+                font-family: '{self.font_family}', 'Tajawal', sans-serif;
+            }}
+            QPushButton:hover {{
+                background-color: #047857;
+                color: white;
+            }}
+        """)
+        btn_form_input.clicked.connect(self._prompt_insert_input_var)
+        var_header_row.addWidget(btn_form_input)
+
+        btn_form_choice = QPushButton("+ 🔽 {{choice:name:opts}}")
+        btn_form_choice.setFixedHeight(28)
+        btn_form_choice.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_form_choice.setToolTip("إدراج قائمة خيارات منسدلة للمستخدم عند التوسيع")
+        btn_form_choice.setFont(QFont(self.font_family, 11, QFont.Bold))
+        btn_form_choice.setStyleSheet(f"""
+            QPushButton {{
+                background-color: #3b0764;
+                border: 1px solid #7c3aed;
+                color: #c084fc;
+                font-weight: bold;
+                font-size: 11px;
+                border-radius: 7px;
+                padding: 2px 10px;
+                font-family: '{self.font_family}', 'Tajawal', sans-serif;
+            }}
+            QPushButton:hover {{
+                background-color: #581c87;
+                color: white;
+            }}
+        """)
+        btn_form_choice.clicked.connect(self._prompt_insert_choice_var)
+        var_header_row.addWidget(btn_form_choice)
+
+        r_layout.addLayout(var_header_row)
+
+        # Dynamic Variable Quick Pills Row
+        pills_row = QHBoxLayout()
+        pills_row.setSpacing(6)
         for v_tag, v_label in [
-            ("{date}", "📅 {date}"),
-            ("{time}", "⏰ {time}"),
-            ("{clipboard}", "📋 {clipboard}"),
-            ("{uuid}", "🔑 {uuid}"),
-            ("{random}", "🎲 {random}"),
-            ("{cursor}", "🎯 {cursor}")
+            ("{{date}}", "📅 {date}"),
+            ("{{time}}", "⏰ {time}"),
+            ("{{clipboard}}", "📋 {clipboard}"),
+            ("{{uuid}}", "🔑 {uuid}"),
+            ("{{filename}}", "📄 {filename}"),
+            ("{{project}}", "📁 {project}"),
+            ("{{selection}}", "🎯 {selection}"),
+            ("{{cursor}}", "📍 {cursor}")
         ]:
             btn_v = QPushButton(v_label)
-            btn_v.setFixedHeight(28)
+            btn_v.setFixedHeight(26)
             btn_v.setCursor(QCursor(Qt.PointingHandCursor))
             btn_v.setToolTip(f"إدراج المتغير {v_tag} في موضع المؤشر")
-            btn_v.setFont(QFont(self.font_family, 11, QFont.Bold))
+            btn_v.setFont(QFont(self.font_family, 10, QFont.Bold))
             btn_v.setStyleSheet(f"""
                 QPushButton {{
                     background-color: #182229;
                     border: 1px solid #2a3942;
                     color: #38bdf8;
                     font-weight: bold;
-                    font-size: 12px;
-                    border-radius: 7px;
-                    padding: 2px 10px;
+                    font-size: 11px;
+                    border-radius: 6px;
+                    padding: 2px 8px;
                     font-family: '{self.font_family}', 'Tajawal', sans-serif;
                 }}
                 QPushButton:hover {{
@@ -519,9 +645,10 @@ class SnippetEditorViewQt(QWidget):
                 }}
             """)
             btn_v.clicked.connect(lambda _, tag=v_tag: self._insert_variable(tag))
-            var_header_row.addWidget(btn_v)
+            pills_row.addWidget(btn_v)
 
-        r_layout.addLayout(var_header_row)
+        pills_row.addStretch()
+        r_layout.addLayout(pills_row)
 
         # Content Editor with Arabic Document Direction support
         self.content_edit = QPlainTextEdit()
@@ -673,6 +800,79 @@ class SnippetEditorViewQt(QWidget):
             self.group_filter.addItem(f"{g.icon} {g.name}", g.id)
             self.group_combo.addItem(f"{g.icon} {g.name}", g.id)
 
+    def _on_type_changed(self, index: int):
+        is_code = self.type_combo.currentData() == "Code"
+        self.lang_combo.setEnabled(is_code)
+        if is_code:
+            self.content_edit.setFont(QFont("Consolas", self.editor_font_size))
+            self.content_edit.setStyleSheet(f"""
+                QPlainTextEdit {{
+                    background-color: #0b141a;
+                    color: #f0f2f5;
+                    font-size: {self.editor_font_size}px;
+                    border-radius: 10px;
+                    padding: 12px;
+                    border: 1.5px solid #2a3942;
+                    font-family: 'Consolas', 'Courier New', monospace;
+                    line-height: 1.5;
+                }}
+                QPlainTextEdit:focus {{
+                    border: 1.5px solid #25D366;
+                }}
+            """)
+            if self.lang_combo.currentText() == "Plain Text":
+                self.lang_combo.setCurrentText("Python")
+            if self.is_rtl:
+                self.is_rtl = False
+                self.btn_dir.setText("🌐 LTR")
+                self._apply_editor_direction()
+        else:
+            self.content_edit.setFont(QFont(self.font_family, self.editor_font_size))
+            self.content_edit.setStyleSheet(f"""
+                QPlainTextEdit {{
+                    background-color: #0b141a;
+                    color: #f0f2f5;
+                    font-size: {self.editor_font_size}px;
+                    border-radius: 10px;
+                    padding: 12px;
+                    border: 1.5px solid #2a3942;
+                    font-family: '{self.font_family}', 'Tajawal', 'Cairo', 'Segoe UI', sans-serif;
+                    line-height: 1.5;
+                }}
+                QPlainTextEdit:focus {{
+                    border: 1.5px solid #25D366;
+                }}
+            """)
+
+    def _prompt_insert_input_var(self):
+        name, ok = QInputDialog.getText(
+            self,
+            "إدراج متغير إدخال (Form Input)",
+            "أدخل اسم المتغير المطلوب إدخاله عند التوسيع:\n(مثال: function_name أو table_name)"
+        )
+        if ok and name.strip():
+            clean_name = name.strip()
+            self._insert_variable(f"{{{{input:{clean_name}}}}}")
+
+    def _prompt_insert_choice_var(self):
+        name, ok1 = QInputDialog.getText(
+            self,
+            "إدراج قائمة خيارات (Choice Variable)",
+            "أدخل اسم قائمة الخيارات:\n(مثال: http_method أو log_level)"
+        )
+        if not (ok1 and name.strip()):
+            return
+        clean_name = name.strip()
+        opts, ok2 = QInputDialog.getText(
+            self,
+            "خيارات القائمة",
+            f"أدخل الخيارات مفصولة بفواصل لـ '{clean_name}':\n(مثال: GET,POST,PUT,DELETE أو INFO,WARN,ERROR)"
+        )
+        if ok2 and opts.strip():
+            clean_opts = ",".join([o.strip() for o in opts.split(",") if o.strip()])
+            if clean_opts:
+                self._insert_variable(f"{{{{choice:{clean_name}:{clean_opts}}}}}")
+
     def refresh_list(self):
         self.snippet_list.clear()
         query = self.search_edit.text().strip()
@@ -688,7 +888,11 @@ class SnippetEditorViewQt(QWidget):
 
         for s in snippets:
             desc = s.description if s.description else (s.replacement[:32].replace("\n", " ") + "..." if len(s.replacement) > 32 else s.replacement.replace("\n", " "))
-            item = QListWidgetItem(f"⚡ {s.shortcut}   |   {desc}")
+            if getattr(s, "snippet_type", "Text") == "Code":
+                lang_tag = f"[{s.language}]" if getattr(s, "language", None) and s.language != "Plain Text" else "[Code]"
+                item = QListWidgetItem(f"💻 {s.shortcut}  {lang_tag}  |  {desc}")
+            else:
+                item = QListWidgetItem(f"⚡ {s.shortcut}   |   {desc}")
             item.setFont(QFont(self.font_family, 13))
             item.setData(Qt.UserRole, s.id)
             self.snippet_list.addItem(item)
@@ -715,6 +919,23 @@ class SnippetEditorViewQt(QWidget):
             else:
                 self.app_combo.setCurrentIndex(0)
 
+            # Snippet Type & Language
+            stype = getattr(snippet, "snippet_type", "Text") or "Text"
+            idx_t = self.type_combo.findData(stype)
+            if idx_t >= 0:
+                self.type_combo.setCurrentIndex(idx_t)
+            else:
+                self.type_combo.setCurrentIndex(0)
+
+            lang = getattr(snippet, "language", "Plain Text") or "Plain Text"
+            idx_l = self.lang_combo.findText(lang)
+            if idx_l >= 0:
+                self.lang_combo.setCurrentIndex(idx_l)
+            else:
+                self.lang_combo.setCurrentIndex(0)
+
+            self._on_type_changed(self.type_combo.currentIndex())
+
     def _insert_variable(self, tag: str):
         self.content_edit.insertPlainText(tag)
         self.content_edit.setFocus()
@@ -732,12 +953,19 @@ class SnippetEditorViewQt(QWidget):
             preview_clean = preview_clean[:80] + "..."
         self.live_prev_lbl.setText(f"» {preview_clean}")
 
-    def new_snippet(self, initial_content: str = ""):
+    def new_snippet(self, initial_content: str = "", is_code: bool = False, language: str = "Plain Text"):
         self.selected_snippet_id = None
         self.shortcut_edit.clear()
         self.desc_edit.clear()
         self.content_edit.setPlainText(initial_content)
         self.app_combo.setCurrentIndex(0)
+        self.type_combo.setCurrentIndex(1 if is_code else 0)
+        idx_l = self.lang_combo.findText(language)
+        if idx_l >= 0:
+            self.lang_combo.setCurrentIndex(idx_l)
+        else:
+            self.lang_combo.setCurrentIndex(0)
+        self._on_type_changed(self.type_combo.currentIndex())
         self._update_live_preview()
         self.shortcut_edit.setFocus()
 
@@ -754,6 +982,8 @@ class SnippetEditorViewQt(QWidget):
         gid = self.group_combo.currentData()
         desc = self.desc_edit.text().strip()
         app_f = self.app_combo.currentData() or ""
+        stype = self.type_combo.currentData() or "Text"
+        lang = self.lang_combo.currentText() or "Plain Text"
 
         snippet = Snippet(
             id=self.selected_snippet_id,
@@ -762,6 +992,8 @@ class SnippetEditorViewQt(QWidget):
             description=desc,
             group_id=gid,
             app_filter=app_f,
+            snippet_type=stype,
+            language=lang,
         )
 
         try:

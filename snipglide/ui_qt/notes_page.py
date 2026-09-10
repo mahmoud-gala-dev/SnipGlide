@@ -1111,14 +1111,17 @@ class NotesPageQt(QWidget):
                     self.cat_combo.setCurrentIndex(idx)
             self._copy_note_content(note)
 
-    def new_note(self):
+    def new_note(self, initial_content: str = "", initial_title: str = ""):
         self._set_view_mode("split")
         self.selected_note_id = None
-        self.title_edit.clear()
-        self.content_edit.clear()
+        self.title_edit.setText(initial_title)
+        self.content_edit.setText(initial_content)
         self.pin_btn.setChecked(False)
         self.pin_btn.setText("📌 تثبيت")
-        self.title_edit.setFocus()
+        if initial_title:
+            self.content_edit.setFocus()
+        else:
+            self.title_edit.setFocus()
         self.toast_signal.emit("جاهز لكتابة ملاحظة جديدة ✍️", False)
 
     def _toggle_pin(self):

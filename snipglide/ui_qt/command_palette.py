@@ -144,6 +144,8 @@ class CommandPaletteQt(QDialog):
             ("action", "dev_timestamp", "⏰ أدوات المطورين: محول التوقيت والـ Timestamp"),
             ("action", "dev_hash", "#️⃣ أدوات المطورين: مولد الهاش والتشفير (Hash Generator)"),
             ("action", "dev_text", "🔤 أدوات المطورين: معالجة النصوص وحالات الأحرف (Text Utils)"),
+            ("action", "dev_regex", "🔍 أدوات المطورين: حقل تجارب واختبار التعابير النمطية (Regex Playground)"),
+            ("action", "dev_regex_library", "📚 أدوات المطورين: مكتبة التعابير النمطية المحفوظة (Regex Library)"),
             ("action", "capture_full", "📸 التقاط الشاشة بالكامل وحفظها (Ctrl + Print)"),
             ("action", "capture_area", "✂️ تحديد جزء من الشاشة واقتصاصه (Win + Print)"),
             ("action", "new_snippet", "➕ إنشاء اختصار جديد"),

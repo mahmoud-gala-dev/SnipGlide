@@ -12,6 +12,7 @@ from snipglide.ui_qt.dev_tools.uuid_widget import UuidGeneratorWidget
 from snipglide.ui_qt.dev_tools.timestamp_widget import TimestampConverterWidget
 from snipglide.ui_qt.dev_tools.hash_widget import HashGeneratorWidget
 from snipglide.ui_qt.dev_tools.text_utils_widget import TextUtilsWidget
+from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
 
 class DevToolboxPageQt(QWidget):
     toast_signal = Signal(str, bool)
@@ -108,8 +109,9 @@ class DevToolboxPageQt(QWidget):
         self.ts_widget = TimestampConverterWidget(toast_callback=emit_toast, parent=self)
         self.hash_widget = HashGeneratorWidget(toast_callback=emit_toast, parent=self)
         self.text_widget = TextUtilsWidget(toast_callback=emit_toast, parent=self)
+        self.regex_widget = RegexPlaygroundWidget(toast_callback=emit_toast, parent=self)
 
-        # Add all 8 sub-tools
+        # Add all 9 sub-tools
         self.tabs.addTab(self.json_widget, "📋 JSON")
         self.tabs.addTab(self.b64_widget, "🔒 Base64")
         self.tabs.addTab(self.url_widget, "🌐 URL")
@@ -118,6 +120,7 @@ class DevToolboxPageQt(QWidget):
         self.tabs.addTab(self.ts_widget, "⏰ Timestamp")
         self.tabs.addTab(self.hash_widget, "#️⃣ Hashing")
         self.tabs.addTab(self.text_widget, "🔤 Text Utilities")
+        self.tabs.addTab(self.regex_widget, "🔍 Regex Playground")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
@@ -173,3 +176,11 @@ class DevToolboxPageQt(QWidget):
         # Text aliases
         self.text_editor = self.text_widget.editor
         self._apply_text_transform = self.text_widget.apply_transform
+
+        # Regex aliases
+        self.regex_pattern_input = self.regex_widget.pattern_input
+        self.regex_test_input = self.regex_widget.test_input
+        self.regex_replace_input = self.regex_widget.replace_input
+        self.regex_replace_output = self.regex_widget.replace_output
+        self.regex_results_table = self.regex_widget.results_table
+        self.regex_status = self.regex_widget.status_lbl

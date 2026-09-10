@@ -324,6 +324,14 @@ class MainWindowQt(QMainWindow):
             elif data == "dev_text":
                 self.sidebar.select_page("DevToolbox")
                 self.dev_toolbox_page.tabs.setCurrentIndex(7)
+            elif data == "dev_regex":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(8)
+            elif data == "dev_regex_library":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(8)
+                if hasattr(self.dev_toolbox_page, "regex_widget"):
+                    self.dev_toolbox_page.regex_widget.open_library()
             elif data == "seed_demo":
                 self.chat_page._seed_demo_data()
         elif kind == "copy_snippet":

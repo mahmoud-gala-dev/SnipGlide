@@ -45,6 +45,18 @@ def search_all(query: str, limit: int = 40) -> list[dict]:
         )
         results.extend(dict(row) for row in cursor.fetchall())
 
+        cursor.execute(
+            """
+            SELECT 'Regex' AS kind, CAST(id AS TEXT) AS ref, name AS title, substr(pattern, 1, 500) AS body
+            FROM saved_regexes
+            WHERE name LIKE ? OR pattern LIKE ? OR description LIKE ?
+            ORDER BY favorite DESC, name ASC
+            LIMIT ?
+            """,
+            (term, term, term, per_source_limit),
+        )
+        results.extend(dict(row) for row in cursor.fetchall())
+
     return results[:limit]
 
 
@@ -66,5 +78,10 @@ def get_search_result_body(kind: str, ref: str) -> str:
             cursor.execute("SELECT content FROM clipboard_history WHERE id = ?", (ref,))
             row = cursor.fetchone()
             return row["content"] if row else ""
+
+        if kind == "Regex":
+            cursor.execute("SELECT pattern FROM saved_regexes WHERE id = ?", (ref,))
+            row = cursor.fetchone()
+            return row["pattern"] if row else ""
 
     return ""
