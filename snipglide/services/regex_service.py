@@ -96,8 +96,14 @@ class RegexService:
 
         matches: list[dict[str, Any]] = []
         count = 0
+        truncated = False
+        target_text = text
+        if len(text) > 100_000:
+            target_text = text[:100_000]
+            truncated = True
+
         try:
-            for match in compiled.finditer(text):
+            for match in compiled.finditer(target_text):
                 count += 1
                 named_groups = match.groupdict()
                 all_groups = {i: match.group(i) for i in range(1, len(match.groups()) + 1)}
@@ -115,9 +121,12 @@ class RegexService:
                     break
 
             summary = f"تم العثور على {count} مطابقة" + (f" (تم الوصول للحد الأقصى المعروض: {max_matches})" if count >= max_matches else ".")
+            if truncated:
+                summary += " [تم فحص أول 100 ألف حرف فقط لحماية الأداء]"
             return True, matches, summary
         except Exception as e:
             return False, [], f"خطأ أثناء فحص المطابقات: {str(e)}"
+
 
     @staticmethod
     def replace(

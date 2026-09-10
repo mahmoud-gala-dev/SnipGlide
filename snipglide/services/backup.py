@@ -31,16 +31,50 @@ def export_backup(file_path: str) -> bool:
             
             cursor.execute("SELECT * FROM autocorrect")
             autocorrect = [dict(row) for row in cursor.fetchall()]
+
+            # Optional Developer Suite Tables
+            saved_regexes = []
+            try:
+                cursor.execute("SELECT * FROM saved_regexes")
+                saved_regexes = [dict(row) for row in cursor.fetchall()]
+            except Exception:
+                pass
+
+            saved_api = []
+            try:
+                cursor.execute("SELECT * FROM saved_api_requests")
+                saved_api = [dict(row) for row in cursor.fetchall()]
+            except Exception:
+                pass
+
+            dev_projects = []
+            try:
+                cursor.execute("SELECT * FROM developer_projects")
+                dev_projects = [dict(row) for row in cursor.fetchall()]
+            except Exception:
+                pass
+
+            terminal_cmds = []
+            try:
+                cursor.execute("SELECT * FROM terminal_commands")
+                terminal_cmds = [dict(row) for row in cursor.fetchall()]
+            except Exception:
+                pass
             
             backup_data = {
-                "version": "1.0",
+                "version": "1.1",
                 "groups": groups,
                 "snippets": snippets,
-                "autocorrect": autocorrect
+                "autocorrect": autocorrect,
+                "saved_regexes": saved_regexes,
+                "saved_api_requests": saved_api,
+                "developer_projects": dev_projects,
+                "terminal_commands": terminal_cmds,
             }
             
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(backup_data, f, indent=4, ensure_ascii=False)
+
                 
             logger.info(f"Backup exported successfully to {file_path}")
             return True
@@ -101,10 +135,64 @@ def import_backup(file_path: str) -> bool:
                     INSERT INTO autocorrect (typo, correction) 
                     VALUES (?, ?)
                 """, (a.get("typo"), a.get("correction")))
+
+            # Optional developer tools restoration (idempotent / non-destructive)
+            if "saved_regexes" in backup_data:
+                try:
+                    for r in backup_data.get("saved_regexes", []):
+                        if isinstance(r, dict) and r.get("name") and r.get("pattern"):
+                            cursor.execute("SELECT id FROM saved_regexes WHERE name = ?", (r["name"],))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    "INSERT INTO saved_regexes (name, pattern, test_text, description, category, tags, favorite) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                                    (r.get("name"), r.get("pattern"), r.get("test_text", ""), r.get("description", ""), r.get("category", "General"), r.get("tags", ""), r.get("favorite", 0)),
+                                )
+                except Exception:
+                    pass
+
+            if "saved_api_requests" in backup_data:
+                try:
+                    for req in backup_data.get("saved_api_requests", []):
+                        if isinstance(req, dict) and req.get("name") and req.get("url"):
+                            cursor.execute("SELECT id FROM saved_api_requests WHERE name = ? AND url = ?", (req["name"], req["url"]))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    "INSERT INTO saved_api_requests (name, method, url, params_json, headers_json, auth_type, auth_data_json, body_type, body_content, collection_name, is_favorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                                    (req["name"], req.get("method", "GET"), req["url"], req.get("params_json", "[]"), req.get("headers_json", "[]"), req.get("auth_type", "none"), req.get("auth_data_json", "{}"), req.get("body_type", "none"), req.get("body_content", ""), req.get("collection_name", "General"), req.get("is_favorite", 0)),
+                                )
+                except Exception:
+                    pass
+
+            if "developer_projects" in backup_data:
+                try:
+                    for p in backup_data.get("developer_projects", []):
+                        if isinstance(p, dict) and p.get("name") and p.get("project_path"):
+                            cursor.execute("SELECT id FROM developer_projects WHERE project_path = ?", (p["project_path"],))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    "INSERT INTO developer_projects (name, project_path, language, framework, description, is_favorite) VALUES (?, ?, ?, ?, ?, ?)",
+                                    (p["name"], p["project_path"], p.get("language", ""), p.get("framework", ""), p.get("description", ""), p.get("is_favorite", 0)),
+                                )
+                except Exception:
+                    pass
+
+            if "terminal_commands" in backup_data:
+                try:
+                    for c in backup_data.get("terminal_commands", []):
+                        if isinstance(c, dict) and c.get("name") and c.get("command"):
+                            cursor.execute("SELECT id FROM terminal_commands WHERE name = ? AND command = ?", (c["name"], c["command"]))
+                            if not cursor.fetchone():
+                                cursor.execute(
+                                    "INSERT INTO terminal_commands (name, command, description, category, is_favorite) VALUES (?, ?, ?, ?, ?)",
+                                    (c["name"], c["command"], c.get("description", ""), c.get("category", "General"), c.get("is_favorite", 0)),
+                                )
+                except Exception:
+                    pass
                 
             conn.commit()
             logger.info("Backup imported successfully.")
             return True
+
     except Exception as e:
         logger.error(f"Failed to import backup: {e}")
         return False
