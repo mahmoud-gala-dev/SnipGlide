@@ -7,6 +7,7 @@ from snipglide.ui_qt.dev_tools.timestamp_widget import TimestampConverterWidget
 from snipglide.ui_qt.dev_tools.hash_widget import HashGeneratorWidget
 from snipglide.ui_qt.dev_tools.text_utils_widget import TextUtilsWidget
 from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
+from snipglide.ui_qt.dev_tools.api_tester_widget import ApiTesterWidget
 
 __all__ = [
     "DevToolboxPageQt",
@@ -19,4 +20,5 @@ __all__ = [
     "HashGeneratorWidget",
     "TextUtilsWidget",
     "RegexPlaygroundWidget",
+    "ApiTesterWidget",
 ]

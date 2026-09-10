@@ -295,6 +295,44 @@ def initialize_database():
             cursor.execute("ALTER TABLE snippets ADD COLUMN snippet_type TEXT DEFAULT 'Text'")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_snippets_type ON snippets (snippet_type)")
 
+        # Phase 4: Create saved_api_requests table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS saved_api_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                method TEXT NOT NULL DEFAULT 'GET',
+                url TEXT NOT NULL DEFAULT '',
+                params_json TEXT DEFAULT '[]',
+                headers_json TEXT DEFAULT '[]',
+                auth_type TEXT DEFAULT 'none',
+                auth_data_json TEXT DEFAULT '{}',
+                body_type TEXT DEFAULT 'none',
+                body_content TEXT DEFAULT '',
+                collection_name TEXT DEFAULT 'General',
+                is_favorite INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_api_fav ON saved_api_requests(is_favorite)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_api_name ON saved_api_requests(name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_saved_api_collection ON saved_api_requests(collection_name)")
+
+        # Phase 4: Create api_history table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS api_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                method TEXT NOT NULL,
+                url TEXT NOT NULL,
+                status_code INTEGER DEFAULT 0,
+                status_text TEXT DEFAULT '',
+                response_time_ms REAL DEFAULT 0.0,
+                response_size_bytes INTEGER DEFAULT 0,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_api_history_created ON api_history(created_at DESC, id DESC)")
+
         conn.commit()
     finally:
         conn.close()

@@ -332,6 +332,14 @@ class MainWindowQt(QMainWindow):
                 self.dev_toolbox_page.tabs.setCurrentIndex(8)
                 if hasattr(self.dev_toolbox_page, "regex_widget"):
                     self.dev_toolbox_page.regex_widget.open_library()
+            elif data == "dev_api":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(9)
+            elif data == "dev_api_saved":
+                self.sidebar.select_page("DevToolbox")
+                self.dev_toolbox_page.tabs.setCurrentIndex(9)
+                if hasattr(self.dev_toolbox_page, "api_widget"):
+                    self.dev_toolbox_page.api_widget.open_saved_requests()
             elif data == "seed_demo":
                 self.chat_page._seed_demo_data()
         elif kind == "copy_snippet":

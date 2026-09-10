@@ -13,6 +13,7 @@ from snipglide.ui_qt.dev_tools.timestamp_widget import TimestampConverterWidget
 from snipglide.ui_qt.dev_tools.hash_widget import HashGeneratorWidget
 from snipglide.ui_qt.dev_tools.text_utils_widget import TextUtilsWidget
 from snipglide.ui_qt.dev_tools.regex_widget import RegexPlaygroundWidget
+from snipglide.ui_qt.dev_tools.api_tester_widget import ApiTesterWidget
 
 class DevToolboxPageQt(QWidget):
     toast_signal = Signal(str, bool)
@@ -110,8 +111,9 @@ class DevToolboxPageQt(QWidget):
         self.hash_widget = HashGeneratorWidget(toast_callback=emit_toast, parent=self)
         self.text_widget = TextUtilsWidget(toast_callback=emit_toast, parent=self)
         self.regex_widget = RegexPlaygroundWidget(toast_callback=emit_toast, parent=self)
+        self.api_widget = ApiTesterWidget(parent=self)
 
-        # Add all 9 sub-tools
+        # Add all 10 sub-tools
         self.tabs.addTab(self.json_widget, "📋 JSON")
         self.tabs.addTab(self.b64_widget, "🔒 Base64")
         self.tabs.addTab(self.url_widget, "🌐 URL")
@@ -121,6 +123,7 @@ class DevToolboxPageQt(QWidget):
         self.tabs.addTab(self.hash_widget, "#️⃣ Hashing")
         self.tabs.addTab(self.text_widget, "🔤 Text Utilities")
         self.tabs.addTab(self.regex_widget, "🔍 Regex Playground")
+        self.tabs.addTab(self.api_widget, "🌐 API Tester")
 
         main_layout.addWidget(self.tabs, stretch=1)
 
@@ -184,3 +187,8 @@ class DevToolboxPageQt(QWidget):
         self.regex_replace_output = self.regex_widget.replace_output
         self.regex_results_table = self.regex_widget.results_table
         self.regex_status = self.regex_widget.status_lbl
+
+        # API Tester aliases
+        self.api_url_input = self.api_widget.url_edit
+        self.api_method_combo = self.api_widget.method_combo
+        self.api_send_btn = self.api_widget.btn_send

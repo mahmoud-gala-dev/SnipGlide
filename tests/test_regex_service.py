@@ -209,7 +209,8 @@ class TestRegexServiceAndRepo(unittest.TestCase):
         self.assertIsNone(RegexRepository.get_by_id(created_id))
 
     def test_database_migration_indexes(self):
-        with get_connection() as conn:
+        conn = get_connection()
+        try:
             cursor = conn.cursor()
             # Verify saved_regexes table exists
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='saved_regexes'")
@@ -219,6 +220,17 @@ class TestRegexServiceAndRepo(unittest.TestCase):
             cursor.execute("PRAGMA table_info(clipboard_history)")
             col_names = [row["name"] for row in cursor.fetchall()]
             self.assertIn("content_type", col_names)
+        finally:
+            conn.close()
+
+
+    def test_catastrophic_backtracking_timeout(self):
+        # A classic ReDoS pattern: (a+)+$ on a string of 'a's ending with '!'
+        pattern = r"(a+)+$"
+        text = "a" * 28 + "!"
+        ok, matches, msg = RegexService.find_matches(pattern, text, timeout=0.3)
+        self.assertFalse(ok)
+        self.assertIn("Catastrophic Backtracking", msg)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,16 @@
 import re
 from typing import Optional, Any
 
+_DANGEROUS_NESTED_QUANTIFIER = re.compile(r"\([^)]*([*+]\??|\{\d+,?\d*\}\??)\)[*+]")
+
 class RegexService:
+    @staticmethod
+    def is_catastrophic_pattern(pattern_str: str) -> bool:
+        """Detects high-risk nested quantifiers known to cause exponential backtracking (ReDoS)."""
+        if not pattern_str:
+            return False
+        return bool(_DANGEROUS_NESTED_QUANTIFIER.search(pattern_str))
+
     @staticmethod
     def parse_flags(flags_str: str) -> int:
         """Converts flags string (e.g. 'imsx') to Python re flags bitmask."""
@@ -60,16 +69,20 @@ class RegexService:
         pattern_str: str,
         text: str,
         flags_str: str = "",
-        max_matches: int = 200
+        max_matches: int = 200,
+        timeout: float = 2.0
     ) -> tuple[bool, list[dict[str, Any]], str]:
         """
-        Finds all matches and captures groups safely.
+        Finds all matches and captures groups safely with ReDoS protection.
         Returns: (success, list_of_match_dicts, summary_or_error)
         """
         if not pattern_str:
             return True, [], "أدخل نمط Regex للبدء في المطابقة."
         if not text:
             return True, [], "نص الاختبار فارغ (0 مطابقة)."
+
+        if RegexService.is_catastrophic_pattern(pattern_str) and len(text) > 20:
+            return False, [], "⚠️ نمط Regex عالي الخطورة لتضمنه تكراراً كمياً متداخلاً (Catastrophic Backtracking / ReDoS). يرجى تبسيط النمط."
 
         try:
             flags = RegexService.parse_flags(flags_str)
@@ -112,14 +125,19 @@ class RegexService:
         text: str,
         replacement_str: str,
         flags_str: str = "",
-        replace_all: bool = True
+        replace_all: bool = True,
+        timeout: float = 2.0
     ) -> tuple[bool, str]:
         """
-        Replaces matched patterns with replacement text.
+        Replaces matched patterns with replacement text with ReDoS protection.
         Handles Python regex backreferences (\\1, \\g<name>) and invalid groups safely.
         """
         if not pattern_str:
             return False, "نمط Regex فارغ."
+
+        if RegexService.is_catastrophic_pattern(pattern_str) and len(text) > 20:
+            return False, "⚠️ نمط Regex عالي الخطورة لتضمنه تكراراً كمياً متداخلاً (Catastrophic Backtracking / ReDoS). يرجى تبسيط النمط."
+
         try:
             flags = RegexService.parse_flags(flags_str)
             compiled = re.compile(pattern_str, flags)
